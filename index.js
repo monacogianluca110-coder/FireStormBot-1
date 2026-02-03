@@ -9,11 +9,11 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent, // NECESSARIO per !
+    GatewayIntentBits.MessageContent,
   ],
 });
 
-// 📦 Loader comandi
+// 📦 Caricamento comandi
 client.commands = new Map();
 
 const commandsPath = path.join(__dirname, "commands");
@@ -37,12 +37,13 @@ for (const category of fs.readdirSync(commandsPath)) {
 
 console.log(`✅ Comandi caricati: ${client.commands.size}`);
 
-// ⚡ Ready + Status
+// ⚡ Ready + STATUS (COME PRIMA)
 client.once("ready", () => {
   console.log(`🤖 Bot online come ${client.user.tag}`);
 
-  client.user.setActivity("Comandi • !info", {
-    type: "WATCHING", 
+  // 🔥 QUESTO È QUELLO CHE VEDI NEL PROFILO
+  client.user.setActivity("FireStorm™ | !info", {
+    type: "PLAYING",
   });
 });
 
