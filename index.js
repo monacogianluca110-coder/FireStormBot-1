@@ -30,8 +30,8 @@ client.once(Events.ClientReady, async () => {
   console.log(`🔥 FireStorm online come ${client.user.tag}`);
 
   // 🔥 STATUS VISIBILE NEL PROFILO (COME PRIMA)
-  client.user.setActivity("Comandi • !info", {
-    type: ActivityType.Watching
+  client.user.setActivity("!info", {
+    type: ActivityType.Comandi
   });
 
   // ── Register Slash Command /info
@@ -85,3 +85,4 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // LOGIN
 // ─────────────────────────────
 client.login(process.env.TOKEN);
+
