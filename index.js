@@ -31,7 +31,7 @@ client.once(Events.ClientReady, async () => {
 
   // 🔥 STATUS VISIBILE NEL PROFILO (COME PRIMA)
   client.user.setActivity("!info", {
-    type: ActivityType.Comandi
+    type: ActivityType.Command
   });
 
   // ── Register Slash Command /info
@@ -85,4 +85,5 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // LOGIN
 // ─────────────────────────────
 client.login(process.env.TOKEN);
+
 
