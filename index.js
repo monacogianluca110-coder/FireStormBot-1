@@ -4,16 +4,16 @@ const { Client, GatewayIntentBits } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
-// 🔥 Client
+// 🤖 Client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent, // NECESSARIO PER !
+    GatewayIntentBits.MessageContent, // NECESSARIO per !
   ],
 });
 
-// 📦 Caricamento comandi
+// 📦 Loader comandi
 client.commands = new Map();
 
 const commandsPath = path.join(__dirname, "commands");
@@ -37,9 +37,13 @@ for (const category of fs.readdirSync(commandsPath)) {
 
 console.log(`✅ Comandi caricati: ${client.commands.size}`);
 
-// ⚡ Evento ready
+// ⚡ Ready + Status
 client.once("ready", () => {
   console.log(`🤖 Bot online come ${client.user.tag}`);
+
+  client.user.setActivity("Comandi • !info", {
+    type: "WATCHING", 
+  });
 });
 
 // 💬 Prefix commands
