@@ -26,7 +26,7 @@ const client = new Client({
 client.once(Events.ClientReady, async () => {
   console.log(`🔥 FireStorm online come ${client.user.tag}`);
 
-  client.user.setActivity("FireStorm 🔥", { type: 3 }); // WATCHING
+  client.user.setActivity("ele ponno", { type: 3 }); // WATCHING
 
   // ── Register Slash Command /ping
   const commands = [
@@ -75,3 +75,4 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // LOGIN
 // ─────────────────────────────
 client.login(process.env.TOKEN);
+
