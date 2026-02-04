@@ -1,32 +1,36 @@
 const { Events, PermissionsBitField } = require("discord.js");
 
 module.exports = (client) => {
+  console.log("✅ interactionCreate.js caricato");
+
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isButton()) return;
     if (!interaction.customId.startsWith("ar:")) return;
 
-    // ✅ Rispondi subito per evitare "Questa interazione non è riuscita"
+    console.log("✅ Bottone auto-ruoli premuto:", interaction.customId);
+
+    // rispondi subito (mai più “interazione non riuscita”)
     await interaction.deferReply({ ephemeral: true }).catch(() => null);
 
     try {
-      const roleId = interaction.customId.split(":")[1];
       const guild = interaction.guild;
+      if (!guild) return interaction.editReply("❌ Questo bottone funziona solo in un server.");
 
-      if (!guild) {
-        return interaction.editReply("❌ Questo bottone funziona solo in un server.");
-      }
-
+      const roleId = interaction.customId.split(":")[1];
       const role = guild.roles.cache.get(roleId);
+
       if (!role) {
         return interaction.editReply("❌ Ruolo non trovato (ID errato o ruolo eliminato).");
       }
 
-      const me = guild.members.me || (await guild.members.fetch(client.user.id));
+      // ✅ FIX: fetchMe è il modo corretto e stabile
+      const me = await guild.members.fetchMe();
+
       if (!me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
         return interaction.editReply("❌ Mi manca il permesso **Gestisci Ruoli**.");
       }
 
-      // ✅ Gerarchia ruoli: il ruolo del bot deve essere sopra al ruolo che vuole dare
+      // gerarchia
       if (role.position >= me.roles.highest.position) {
         return interaction.editReply(
           "❌ Non posso assegnare questo ruolo perché è **più alto (o uguale)** del mio ruolo.\n" +
@@ -47,7 +51,7 @@ module.exports = (client) => {
     } catch (err) {
       console.error("AUTOROLES CLICK ERROR:", err);
       try {
-        return interaction.editReply(
+        await interaction.editReply(
           "❌ Errore interno o permessi mancanti.\n" +
           "Controlla: **Gestisci Ruoli** + gerarchia ruoli del bot."
         );
