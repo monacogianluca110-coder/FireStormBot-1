@@ -1,0 +1,18 @@
+{
+  "channelId": "1468729208804081917",
+  "messageId": null,
+  "roles": [
+    {
+      "label": "Ruolo 1",
+      "roleId": "INSERISCI_ROLE_ID",
+      "emoji": "🔥",
+      "style": "Primary"
+    },
+    {
+      "label": "Ruolo 2",
+      "roleId": "INSERISCI_ROLE_ID",
+      "emoji": "⚡",
+      "style": "Secondary"
+    }
+  ]
+}
