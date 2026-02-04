@@ -25,7 +25,7 @@ for (const category of fs.readdirSync(commandsRoot)) {
   for (const commandFolder of fs.readdirSync(categoryPath)) {
     const commandPath = path.join(categoryPath, commandFolder);
 
-    const file = fs.readdirSync(commandPath).find(f => f.endsWith(".js"));
+    const file = fs.readdirSync(commandPath).find((f) => f.endsWith(".js"));
     if (!file) continue;
 
     const command = require(path.join(commandPath, file));
@@ -49,15 +49,21 @@ client.once(Events.ClientReady, () => {
 });
 
 // ─────────────────────────────
-// PREFIX HANDLER
+// PREFIX HANDLER ( ! e f! )
 // ─────────────────────────────
-const PREFIX = "!";
+const DEFAULT_PREFIX = "!";
+const MUSIC_PREFIX = "f!";
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
-  if (!message.content.startsWith(PREFIX)) return;
 
-  const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
+  // accetta SOLO questi due prefissi
+  let prefixUsed = null;
+  if (message.content.startsWith(MUSIC_PREFIX)) prefixUsed = MUSIC_PREFIX;
+  else if (message.content.startsWith(DEFAULT_PREFIX)) prefixUsed = DEFAULT_PREFIX;
+  else return;
+
+  const args = message.content.slice(prefixUsed.length).trim().split(/\s+/);
   const commandName = args.shift()?.toLowerCase();
   if (!commandName) return;
 
