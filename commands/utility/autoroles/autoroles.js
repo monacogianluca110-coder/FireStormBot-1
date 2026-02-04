@@ -8,7 +8,7 @@ const {
 
 module.exports = {
   name: "autoroles",
-  description: "Crea il pannello auto-ruoli nel canale dedicato",
+  description: "Crea/Aggiorna il pannello auto-ruoli",
   async execute(message) {
     try {
       const CHANNEL_ID = "1468729208804081917";
@@ -37,12 +37,11 @@ module.exports = {
             "⚠️ Pannello ufficiale FireStorm™.",
           ].join("\n")
         )
-        .setThumbnail(thumbGif) // piccolo in alto a destra
-        .setImage(bigImage) // grande sotto
+        .setThumbnail(thumbGif)
+        .setImage(bigImage)
         .setFooter({ text: "FireStorm™ • Auto-Ruoli" })
         .setTimestamp();
 
-      // 4 ruoli test (li rinomino "Test 1..4" finché non mi dai i nomi)
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("ar:1468734679942435011")
@@ -62,8 +61,25 @@ module.exports = {
           .setStyle(ButtonStyle.Danger)
       );
 
-      await channel.send({ embeds: [embed], components: [row] });
-      return message.reply(`✅ Pannello auto-ruoli inviato in <#${CHANNEL_ID}>`);
+      // ✅ Cerca un vecchio pannello del bot e modificalo invece di crearne uno nuovo
+      const lastMsgs = await channel.messages.fetch({ limit: 20 }).catch(() => null);
+      let panelMsg = null;
+
+      if (lastMsgs) {
+        panelMsg = lastMsgs.find((m) => {
+          const isMe = m.author?.id === message.client.user.id;
+          const hasEmbedTitle = m.embeds?.[0]?.title === "🎭 Auto-Ruoli — FireStorm™";
+          return isMe && hasEmbedTitle;
+        });
+      }
+
+      if (panelMsg) {
+        await panelMsg.edit({ embeds: [embed], components: [row] });
+        return message.reply(`✅ Pannello aggiornato in <#${CHANNEL_ID}>`);
+      } else {
+        await channel.send({ embeds: [embed], components: [row] });
+        return message.reply(`✅ Pannello creato in <#${CHANNEL_ID}>`);
+      }
     } catch (err) {
       console.error("AUTOROLES ERROR:", err);
       return message.reply("❌ Errore durante la creazione del pannello auto-ruoli.");
