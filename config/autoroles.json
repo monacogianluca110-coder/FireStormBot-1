@@ -2,17 +2,9 @@
   "channelId": "1468729208804081917",
   "messageId": null,
   "roles": [
-    {
-      "label": "Ruolo 1",
-      "roleId": "INSERISCI_ROLE_ID",
-      "emoji": "🔥",
-      "style": "Primary"
-    },
-    {
-      "label": "Ruolo 2",
-      "roleId": "INSERISCI_ROLE_ID",
-      "emoji": "⚡",
-      "style": "Secondary"
-    }
+    { "label": "Ruolo Test 1", "roleId": "1468734679942435011", "emoji": "🧪", "style": "Primary" },
+    { "label": "Ruolo Test 2", "roleId": "1468734851543863347", "emoji": "🧪", "style": "Secondary" },
+    { "label": "Ruolo Test 3", "roleId": "1468734884880056411", "emoji": "🧪", "style": "Success" },
+    { "label": "Ruolo Test 4", "roleId": "1468734927716618301", "emoji": "🧪", "style": "Danger" }
   ]
 }
