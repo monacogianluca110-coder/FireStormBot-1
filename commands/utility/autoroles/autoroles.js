@@ -19,7 +19,7 @@ module.exports = {
 
       const channel = await message.guild.channels.fetch(CHANNEL_ID).catch(() => null);
       if (!channel || !channel.isTextBased()) {
-        return message.reply("❌ Canale auto-ruoli non trovato o non è un canale testuale.");
+        return message.reply("❌ Canale auto-ruoli non trovato o non testuale.");
       }
 
       const bigImage =
@@ -31,12 +31,10 @@ module.exports = {
         .setTitle("🎭 Auto-Ruoli — FireStorm™")
         .setDescription(
           [
-            "Seleziona i ruoli che vuoi avere cliccando i bottoni qui sotto.",
+            "Scegli i ruoli che vuoi avere cliccando i bottoni qui sotto.",
             "",
-            "✅ Puoi attivare/disattivare i ruoli quando vuoi.",
+            "✅ Clicca di nuovo per **rimuovere** un ruolo.",
             "⚠️ Pannello ufficiale FireStorm™.",
-            "",
-            "📌 **Ruoli in arrivo…** (li aggiungiamo appena mi dai gli ID)",
           ].join("\n")
         )
         .setThumbnail(thumbGif) // piccolo in alto a destra
@@ -44,23 +42,24 @@ module.exports = {
         .setFooter({ text: "FireStorm™ • Auto-Ruoli" })
         .setTimestamp();
 
-      // Placeholder: bottoni disabilitati finché non mettiamo i ruoli veri
+      // 4 ruoli test (li rinomino "Test 1..4" finché non mi dai i nomi)
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId("ar:placeholder1")
-          .setLabel("Ruolo 1 (in arrivo)")
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(true),
+          .setCustomId("ar:1468734679942435011")
+          .setLabel("Ruolo Test 1")
+          .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
-          .setCustomId("ar:placeholder2")
-          .setLabel("Ruolo 2 (in arrivo)")
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(true),
+          .setCustomId("ar:1468734851543863347")
+          .setLabel("Ruolo Test 2")
+          .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
-          .setCustomId("ar:placeholder3")
-          .setLabel("Ruolo 3 (in arrivo)")
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(true)
+          .setCustomId("ar:1468734884880056411")
+          .setLabel("Ruolo Test 3")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId("ar:1468734927716618301")
+          .setLabel("Ruolo Test 4")
+          .setStyle(ButtonStyle.Danger)
       );
 
       await channel.send({ embeds: [embed], components: [row] });
