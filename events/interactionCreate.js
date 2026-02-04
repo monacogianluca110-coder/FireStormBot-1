@@ -1,12 +1,4 @@
-const fs = require("fs");
-const path = require("path");
 const { Events } = require("discord.js");
-
-function loadConfig() {
-  const cfgPath = path.join(__dirname, "../config/autoroles.json");
-  if (!fs.existsSync(cfgPath)) return null;
-  return JSON.parse(fs.readFileSync(cfgPath, "utf8"));
-}
 
 module.exports = (client) => {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -15,23 +7,6 @@ module.exports = (client) => {
       if (!interaction.customId.startsWith("ar:")) return;
 
       const roleId = interaction.customId.split(":")[1];
-      if (!roleId || roleId === "MISSING") {
-        return interaction.reply({
-          content: "❌ Ruolo non configurato ancora.",
-          ephemeral: true,
-        });
-      }
-
-      const cfg = loadConfig();
-      // (opzionale) se vuoi limitare solo al canale del pannello:
-      if (cfg?.channelId && interaction.channelId !== cfg.channelId) {
-        return interaction.reply({
-          content: "❌ Usa il pannello nel canale auto-ruoli.",
-          ephemeral: true,
-        });
-      }
-
-      const member = await interaction.guild.members.fetch(interaction.user.id);
       const role = interaction.guild.roles.cache.get(roleId);
 
       if (!role) {
@@ -41,6 +16,11 @@ module.exports = (client) => {
         });
       }
 
+      // fetch membro
+      const member = await interaction.guild.members.fetch(interaction.user.id);
+
+      // sicurezza: bot deve poter gestire il ruolo
+      // (se il ruolo è sopra al bot nella gerarchia, fallisce)
       const hasRole = member.roles.cache.has(roleId);
 
       if (hasRole) {
@@ -57,11 +37,12 @@ module.exports = (client) => {
         });
       }
     } catch (err) {
-      console.error("AutoRoles button error:", err);
+      console.error("AUTOROLES BUTTON ERROR:", err);
       if (interaction.isRepliable()) {
         try {
           await interaction.reply({
-            content: "❌ Errore interno. Riprova tra poco.",
+            content:
+              "❌ Non posso assegnare quel ruolo. Controlla permessi/gerarchia ruoli del bot.",
             ephemeral: true,
           });
         } catch {}
