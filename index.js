@@ -1,6 +1,13 @@
 require("dotenv").config();
 
-const { Client, GatewayIntentBits, Partials, Events, ActivityType } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  Events,
+  ActivityType,
+} = require("discord.js");
+
 const fs = require("fs");
 const path = require("path");
 
@@ -14,56 +21,51 @@ const client = new Client({
 });
 
 // ─────────────────────────────
-// LOAD COMMANDS (da cartelle)
+// COMMAND LOADER
 // ─────────────────────────────
 client.commands = new Map();
 
 const commandsRoot = path.join(__dirname, "commands");
+
 for (const category of fs.readdirSync(commandsRoot)) {
   const categoryPath = path.join(commandsRoot, category);
 
   for (const commandFolder of fs.readdirSync(categoryPath)) {
     const commandPath = path.join(categoryPath, commandFolder);
 
-    const file = fs.readdirSync(commandPath).find((f) => f.endsWith(".js"));
+    const file = fs.readdirSync(commandPath).find(f => f.endsWith(".js"));
     if (!file) continue;
 
     const command = require(path.join(commandPath, file));
     if (!command?.name || typeof command.execute !== "function") continue;
 
-    client.commands.set(command.name, command);
+    client.commands.set(command.name.toLowerCase(), command);
   }
 }
 
-console.log(`✅ Comandi caricati: ${client.commands.size}`);
+console.log(`✅ Loaded ${client.commands.size} commands`);
 
 // ─────────────────────────────
-// READY + STATUS
+// READY
 // ─────────────────────────────
 client.once(Events.ClientReady, () => {
-  console.log(`🔥 FireStorm online come ${client.user.tag}`);
+  console.log(`🔥 FireStorm online as ${client.user.tag}`);
 
-  client.user.setActivity("Comandi • !info", {
+  client.user.setActivity("Commands • !info", {
     type: ActivityType.Watching,
   });
 });
 
 // ─────────────────────────────
-// PREFIX HANDLER ( ! e f! )
+// PREFIX HANDLER
 // ─────────────────────────────
-const DEFAULT_PREFIX = "!";
-const MUSIC_PREFIX = "f!";
+const PREFIX = "!";
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
+  if (!message.content.startsWith(PREFIX)) return;
 
-  // accetta SOLO questi due prefissi
-  let prefixUsed = null;
-  if (message.content.startsWith(MUSIC_PREFIX)) prefixUsed = MUSIC_PREFIX;
-  else if (message.content.startsWith(DEFAULT_PREFIX)) prefixUsed = DEFAULT_PREFIX;
-  else return;
-
-  const args = message.content.slice(prefixUsed.length).trim().split(/\s+/);
+  const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
   const commandName = args.shift()?.toLowerCase();
   if (!commandName) return;
 
@@ -73,8 +75,8 @@ client.on(Events.MessageCreate, async (message) => {
   try {
     await command.execute(message, args);
   } catch (err) {
-    console.error(err);
-    message.channel.send("❌ Errore durante il comando.");
+    console.error("Command error:", err);
+    message.channel.send("❌ Command execution failed.");
   }
 });
 
