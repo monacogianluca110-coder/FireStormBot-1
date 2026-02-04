@@ -1,10 +1,9 @@
-const play = require("play-dl");
+const ytdl = require("ytdl-core");
 const {
   joinVoiceChannel,
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
-  VoiceConnectionStatus,
 } = require("@discordjs/voice");
 
 const players = new Map();
@@ -15,62 +14,52 @@ module.exports = {
   async execute(message, args) {
     const query = args.join(" ").trim();
     if (!query) {
-      return message.reply("❌ Usa: `f!p <link o nome canzone>`");
+      return message.reply("❌ Usa: `f!p <link YouTube o testo>`");
     }
 
-    const voiceChannel = message.member?.voice?.channel;
+    const voiceChannel = message.member.voice.channel;
     if (!voiceChannel) {
       return message.reply("❌ Devi essere in un canale vocale.");
     }
 
-    let searchQuery = query;
+    let videoUrl = query;
 
     try {
-      // 🎧 SPOTIFY LINK → converte in ricerca YouTube
-      if (play.sp_validate(query) === "track") {
-        const spData = await play.spotify(query);
-        searchQuery = `${spData.name} ${spData.artists[0].name}`;
+      // 🔍 Se NON è un link, cerchiamo su YouTube
+      if (!ytdl.validateURL(query)) {
+        const play = require("play-dl");
+        const results = await play.search(query, { limit: 1 });
+        if (!results.length) {
+          return message.reply("❌ Nessun risultato trovato.");
+        }
+        videoUrl = results[0].url;
       }
 
-      // 🔍 Cerca SEMPRE su YouTube
-      const results = await play.search(searchQuery, { limit: 1 });
-      if (!results.length) {
-        return message.reply("❌ Nessun risultato trovato.");
-      }
+      const stream = ytdl(videoUrl, {
+        filter: "audioonly",
+        highWaterMark: 1 << 25,
+      });
 
-      const video = results[0];
-      const stream = await play.stream(video.url);
+      const resource = createAudioResource(stream);
+      const player = createAudioPlayer();
 
       const connection = joinVoiceChannel({
         channelId: voiceChannel.id,
         guildId: voiceChannel.guild.id,
         adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-        selfDeaf: true,
       });
-
-      let player = players.get(message.guild.id);
-      if (!player) {
-        player = createAudioPlayer();
-        players.set(message.guild.id, player);
-
-        player.on(AudioPlayerStatus.Idle, () => {
-          try { connection.destroy(); } catch {}
-          players.delete(message.guild.id);
-        });
-      }
 
       connection.subscribe(player);
-
-      const resource = createAudioResource(stream.stream, {
-        inputType: stream.type,
-      });
-
       player.play(resource);
 
-      await message.channel.send(`▶️ **Ora in riproduzione:** **${video.title}**`);
+      player.on(AudioPlayerStatus.Idle, () => {
+        connection.destroy();
+      });
+
+      await message.channel.send("▶️ **Riproduzione avviata**");
     } catch (err) {
       console.error(err);
-      return message.reply("❌ Errore nella riproduzione.");
+      return message.reply("❌ Errore nella riproduzione (VPS).");
     }
   },
 };
