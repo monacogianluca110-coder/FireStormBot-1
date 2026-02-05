@@ -9,13 +9,13 @@ module.exports = (client) => {
   const WELCOME_GIF =
     "https://i.pinimg.com/originals/81/11/da/8111dadeee2521a210a29f2b734fcf92.gif";
 
-  // 🔥 EMOJI CUSTOM (ID CHE MI HAI DATO TU)
+  // ✅ EMOJI NON ANIMATE => SOLO <: ... :ID>
   const E_ARROW = `<:arrow:1078839081435398235>`;
   const E_STARS = `<:stars:1446264183912923298>`;
   const E_HEART = `<:heart:1078842029611700265>`;
   const E_DISCORD = `<:discord:1078840726026211430>`;
-  const E_CROWN_BLACK = `<a:crownblack:878544140198100992>`;
-  const E_CROWN_WHITE = `<a:crownwhite:878544140198100992>`;
+  const E_CROWN_BLACK = `<:crownblack:878544140198100992>`;
+  const E_CROWN_WHITE = `<:crownwhite:878544140198100992>`; // se è diversa, metti l’ID giusto
 
   const SEP = "━━━━━━━━━━━━━━━━━━━━";
 
