@@ -9,14 +9,6 @@ module.exports = (client) => {
   const WELCOME_GIF =
     "https://i.pinimg.com/originals/81/11/da/8111dadeee2521a210a29f2b734fcf92.gif";
 
-  // ✅ EMOJI NON ANIMATE => SOLO <: ... :ID>
-  const E_ARROW = `<:arrow:1078839081435398235>`;
-  const E_STARS = `<:stars:1446264183912923298>`;
-  const E_HEART = `<:heart:1078842029611700265>`;
-  const E_DISCORD = `<:discord:1078840726026211430>`;
-  const E_CROWN_BLACK = `<:crownblack:878544140198100992>`;
-  const E_CROWN_WHITE = `<:crownwhite:878544140198100992>`; // se è diversa, metti l’ID giusto
-
   const SEP = "━━━━━━━━━━━━━━━━━━━━";
 
   client.on(Events.GuildMemberAdd, async (member) => {
@@ -29,21 +21,21 @@ module.exports = (client) => {
 
       const embed = new EmbedBuilder()
         .setColor(0xff2d2d)
-        .setTitle(`${E_CROWN_BLACK} WELCOME!! ${E_CROWN_WHITE}`)
+        .setTitle("👑 WELCOME IN FIRESTORM 👑")
         .setDescription(
           [
-            `${E_STARS} **Ciao ${member}** ${E_HEART}`,
+            `✨ **Ciao ${member} ❤️**`,
             SEP,
-            `${E_DISCORD} **Benvenuto/a in FireStorm™**`,
-            `Sei il membro **#${count}** — preparati a divertirti e spaccare tutto 🔥`,
+            `🔥 **Benvenuto/a in FireStorm™**`,
+            `Sei il membro **#${count}** — preparati a divertirti e spaccare tutto 💥`,
             SEP,
-            `${E_STARS} **Ti invitiamo a visitare i canali:**`,
-            `${E_ARROW} <#${RULES_CHANNEL_ID}>  — 📜 **Regole**`,
-            `${E_ARROW} <#${AUTOROLES_CHANNEL_ID}>  — 🎭 **Auto-Ruoli**`,
-            `${E_ARROW} <#${MAIN_CHAT_ID}>  — 💬 **Chat Main**`,
+            `📌 **Inizia da qui:**`,
+            `➡️ <#${RULES_CHANNEL_ID}>  — 📜 **Regole**`,
+            `➡️ <#${AUTOROLES_CHANNEL_ID}>  — 🎭 **Auto-Ruoli**`,
+            `➡️ <#${MAIN_CHAT_ID}>  — 💬 **Chat Main**`,
             SEP,
             `💬 **Scrivi un saluto in chat e scegli i tuoi ruoli!**`,
-            `👮 Se hai bisogno, contatta lo staff.`,
+            `🛡️ Se hai bisogno, contatta lo staff.`,
           ].join("\n")
         )
         .setThumbnail(avatar)
