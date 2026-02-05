@@ -9,6 +9,14 @@ module.exports = (client) => {
   const WELCOME_GIF =
     "https://i.pinimg.com/originals/81/11/da/8111dadeee2521a210a29f2b734fcf92.gif";
 
+  // 🔥 EMOJI CUSTOM (ID CHE MI HAI DATO TU)
+  const E_ARROW = `<:arrow:1446266575262056468>`;
+  const E_STARS = `<:stars:1446264183912923298>`;
+  const E_HEART = `<:heart:1374162617010225242>`;
+  const E_DISCORD = `<:discord:850081111241785425>`;
+  const E_CROWN_BLACK = `<a:crownblack:1383053653400621156>`;
+  const E_CROWN_WHITE = `<a:crownwhite:1383053638502453320>`;
+
   const SEP = "━━━━━━━━━━━━━━━━━━━━";
 
   client.on(Events.GuildMemberAdd, async (member) => {
@@ -21,21 +29,21 @@ module.exports = (client) => {
 
       const embed = new EmbedBuilder()
         .setColor(0xff2d2d)
-        .setTitle("👑 WELCOME IN FIRESTORM 👑")
+        .setTitle(`${E_CROWN_BLACK} WELCOME!! ${E_CROWN_WHITE}`)
         .setDescription(
           [
-            `✨ **Ciao ${member} ❤️**`,
+            `${E_STARS} **Ciao ${member}** ${E_HEART}`,
             SEP,
-            `🔥 **Benvenuto/a in FireStorm™**`,
-            `Sei il membro **#${count}** — preparati a divertirti e spaccare tutto 💥`,
+            `${E_DISCORD} **Benvenuto/a in FireStorm™**`,
+            `Sei il membro **#${count}** — preparati a divertirti e spaccare tutto 🔥`,
             SEP,
-            `📌 **Inizia da qui:**`,
-            `➡️ <#${RULES_CHANNEL_ID}>  — 📜 **Regole**`,
-            `➡️ <#${AUTOROLES_CHANNEL_ID}>  — 🎭 **Auto-Ruoli**`,
-            `➡️ <#${MAIN_CHAT_ID}>  — 💬 **Chat Main**`,
+            `${E_STARS} **Ti invitiamo a visitare i canali:**`,
+            `${E_ARROW} <#${RULES_CHANNEL_ID}>  — 📜 **Regole**`,
+            `${E_ARROW} <#${AUTOROLES_CHANNEL_ID}>  — 🎭 **Auto-Ruoli**`,
+            `${E_ARROW} <#${MAIN_CHAT_ID}>  — 💬 **Chat Main**`,
             SEP,
             `💬 **Scrivi un saluto in chat e scegli i tuoi ruoli!**`,
-            `🛡️ Se hai bisogno, contatta lo staff.`,
+            `👮 Se hai bisogno, contatta lo staff.`,
           ].join("\n")
         )
         .setThumbnail(avatar)
