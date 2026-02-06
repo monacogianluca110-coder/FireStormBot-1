@@ -144,7 +144,7 @@ module.exports = (client) => {
       const history = historyByThread.get(ch.id) || [];
 
       const resp = await openai.responses.create({
-        model: "gpt-5-mini",
+        model: "gpt-4.1-mini",
         input: [
           { role: "system", content: systemRules },
           ...history.map((h) => ({ role: h.role, content: h.content })),
