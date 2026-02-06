@@ -20,18 +20,24 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildModeration,
+    GatewayIntentBits.GuildInvites,
   ],
-  partials: [Partials.Channel],
+  partials: [
+    Partials.Message,
+    Partials.Channel,
+    Partials.User,
+    Partials.GuildMember,
+  ],
 });
 
 // ─────────────────────────────
-// LOAD EVENTS (USA /events)
+// LOAD EVENTS (events/)
 // ─────────────────────────────
 const eventsPath = path.join(__dirname, "events");
 
-if (!fs.existsSync(eventsPath)) {
-  console.log("❌ Cartella events/ NON trovata:", eventsPath);
-} else {
+if (fs.existsSync(eventsPath)) {
   const files = fs.readdirSync(eventsPath).filter(f => f.endsWith(".js"));
   console.log("📦 Eventi trovati:", files.length ? files.join(", ") : "nessuno");
 
@@ -40,46 +46,62 @@ if (!fs.existsSync(eventsPath)) {
       require(path.join(eventsPath, file))(client);
       console.log("✅ Evento caricato:", file);
     } catch (err) {
-      console.error("❌ Errore caricando evento:", file);
+      console.error("❌ Errore evento:", file);
       console.error(err);
     }
   }
+} else {
+  console.log("⚠️ Cartella events/ non trovata");
 }
 
 // ─────────────────────────────
-// LOAD COMMANDS
+// LOAD COMMANDS (commands/)
 // ─────────────────────────────
 client.commands = new Map();
 const commandsRoot = path.join(__dirname, "commands");
 
 let loaded = 0;
 
-for (const category of fs.readdirSync(commandsRoot)) {
-  const categoryPath = path.join(commandsRoot, category);
-  if (!fs.statSync(categoryPath).isDirectory()) continue;
+if (fs.existsSync(commandsRoot)) {
+  for (const category of fs.readdirSync(commandsRoot)) {
+    const categoryPath = path.join(commandsRoot, category);
+    if (!fs.statSync(categoryPath).isDirectory()) continue;
 
-  for (const commandFolder of fs.readdirSync(categoryPath)) {
-    const commandPath = path.join(categoryPath, commandFolder);
-    if (!fs.statSync(commandPath).isDirectory()) continue;
+    for (const commandFolder of fs.readdirSync(categoryPath)) {
+      const commandPath = path.join(categoryPath, commandFolder);
+      if (!fs.statSync(commandPath).isDirectory()) continue;
 
-    const file = fs.readdirSync(commandPath).find(f => f.endsWith(".js"));
-    if (!file) continue;
+      const file = fs.readdirSync(commandPath).find(f => f.endsWith(".js"));
+      if (!file) continue;
 
-    const command = require(path.join(commandPath, file));
-    if (!command?.name || typeof command.execute !== "function") continue;
+      const command = require(path.join(commandPath, file));
+      if (!command?.name || typeof command.execute !== "function") continue;
 
-    client.commands.set(command.name.toLowerCase(), command);
-    loaded++;
+      client.commands.set(command.name.toLowerCase(), command);
+      loaded++;
+    }
   }
 }
 
 console.log(`✅ Caricati ${loaded} comandi`);
 
 // ─────────────────────────────
+// LOAD LOGS SYSTEM (logs/)
+// ─────────────────────────────
+try {
+  require("./logs")(client);
+  console.log("✅ Logs system caricato");
+} catch (err) {
+  console.error("❌ Errore caricando logs system");
+  console.error(err);
+}
+
+// ─────────────────────────────
 // READY
 // ─────────────────────────────
 client.once(Events.ClientReady, () => {
   console.log(`🔥 FireStorm online come ${client.user.tag}`);
+
   client.user.setActivity("Comandi • !info", {
     type: ActivityType.Watching,
   });
@@ -91,7 +113,8 @@ client.once(Events.ClientReady, () => {
 const PREFIX = "!";
 
 client.on(Events.MessageCreate, async (message) => {
-  if (message.author.bot || !message.guild) return;
+  if (message.author.bot) return;
+  if (!message.guild) return;
   if (!message.content.startsWith(PREFIX)) return;
 
   const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
@@ -104,16 +127,21 @@ client.on(Events.MessageCreate, async (message) => {
   try {
     await command.execute(message, args);
   } catch (err) {
-    console.error("❌ Command error:", err);
+    console.error("❌ Errore comando:", err);
     message.channel.send("❌ Errore durante il comando.");
   }
 });
 
 // ─────────────────────────────
-// SAFETY (Railway)
+// SAFETY (Railway / VPS)
 // ─────────────────────────────
-process.on("unhandledRejection", console.error);
-process.on("uncaughtException", console.error);
+process.on("unhandledRejection", (err) => {
+  console.error("UNHANDLED REJECTION:", err);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
 
 // ─────────────────────────────
 // LOGIN
