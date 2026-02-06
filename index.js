@@ -38,7 +38,7 @@ const client = new Client({
 const eventsPath = path.join(__dirname, "events");
 
 if (fs.existsSync(eventsPath)) {
-  const files = fs.readdirSync(eventsPath).filter(f => f.endsWith(".js"));
+  const files = fs.readdirSync(eventsPath).filter((f) => f.endsWith(".js"));
   console.log("📦 Eventi trovati:", files.length ? files.join(", ") : "nessuno");
 
   for (const file of files) {
@@ -71,7 +71,7 @@ if (fs.existsSync(commandsRoot)) {
       const commandPath = path.join(categoryPath, commandFolder);
       if (!fs.statSync(commandPath).isDirectory()) continue;
 
-      const file = fs.readdirSync(commandPath).find(f => f.endsWith(".js"));
+      const file = fs.readdirSync(commandPath).find((f) => f.endsWith(".js"));
       if (!file) continue;
 
       const command = require(path.join(commandPath, file));
@@ -97,14 +97,24 @@ try {
 }
 
 // ─────────────────────────────
-// READY
+// READY (+ TEST LOG WRITE)
 // ─────────────────────────────
-client.once(Events.ClientReady, () => {
+client.once(Events.ClientReady, async () => {
   console.log(`🔥 FireStorm online come ${client.user.tag}`);
 
   client.user.setActivity("Comandi • !info", {
     type: ActivityType.Watching,
   });
+
+  // ✅ TEST: scrittura nel canale server-log
+  const TEST_CH = "1455214028170334278"; // server-log
+  try {
+    const ch = await client.channels.fetch(TEST_CH);
+    await ch.send("✅ TEST: posso scrivere nei logs (server-log).");
+    console.log("✅ Test scrittura log OK");
+  } catch (e) {
+    console.error("❌ Test scrittura log FALLITO:", e?.message || e);
+  }
 });
 
 // ─────────────────────────────
