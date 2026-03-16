@@ -44,7 +44,7 @@ module.exports = {
           "✅ **Entrando e restando nel server, accetti automaticamente queste regole.**",
         ].join("\n")
       )
-      .setImage("https://i.pinimg.com/originals/5d/d8/0f/5dd80fe00a06651f3200aea753987f50.gif")
+      .setImage("https://chatgpt.com/backend-api/estuary/content?id=file_000000007e3c7246b03f0dec49b40bbc&ts=492683&p=fs&cid=1&sig=3e5afc00361a49b26acb1deeafa4760b0edc6de8721da5efe81c2fec59642f22&v=0")
       .setFooter({ text: "FireStorm™ • Rules Panel" })
       .setTimestamp();
 
