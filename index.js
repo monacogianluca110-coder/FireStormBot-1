@@ -23,7 +23,7 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildModeration,
     GatewayIntentBits.GuildInvites,
-    GatewayIntentBits.GuildExpressions, // emoji + sticker
+    GatewayIntentBits.GuildExpressions,
   ],
   partials: [
     Partials.Message,
@@ -32,28 +32,6 @@ const client = new Client({
     Partials.GuildMember,
   ],
 });
-
-// ─────────────────────────────
-// LOAD EVENTS (events/)
-// ─────────────────────────────
-const eventsPath = path.join(__dirname, "events");
-
-if (fs.existsSync(eventsPath)) {
-  const files = fs.readdirSync(eventsPath).filter((f) => f.endsWith(".js"));
-  console.log("📦 Eventi trovati:", files.length ? files.join(", ") : "nessuno");
-
-  for (const file of files) {
-    try {
-      require(path.join(eventsPath, file))(client);
-      console.log("✅ Evento caricato:", file);
-    } catch (err) {
-      console.error("❌ Errore evento:", file);
-      console.error(err);
-    }
-  }
-} else {
-  console.log("⚠️ Cartella events/ non trovata");
-}
 
 // ─────────────────────────────
 // LOAD COMMANDS (commands/)
@@ -92,6 +70,35 @@ if (fs.existsSync(commandsRoot)) {
 console.log(`✅ Caricati ${loaded} comandi`);
 
 // ─────────────────────────────
+// LOAD EVENTS (events/)
+// ─────────────────────────────
+const eventsPath = path.join(__dirname, "events");
+
+if (fs.existsSync(eventsPath)) {
+  const files = fs.readdirSync(eventsPath).filter((f) => f.endsWith(".js"));
+  console.log("📦 Eventi trovati:", files.length ? files.join(", ") : "nessuno");
+
+  for (const file of files) {
+    try {
+      const event = require(path.join(eventsPath, file));
+
+      if (!event?.name || typeof event.execute !== "function") {
+        console.log(`❌ Evento non valido: ${file}`);
+        continue;
+      }
+
+      client.on(event.name, (...args) => event.execute(...args, client));
+      console.log("✅ Evento caricato:", file);
+    } catch (err) {
+      console.error("❌ Errore evento:", file);
+      console.error(err);
+    }
+  }
+} else {
+  console.log("⚠️ Cartella events/ non trovata");
+}
+
+// ─────────────────────────────
 // LOAD LOGS SYSTEM (logs/*.js)
 // ─────────────────────────────
 const logsPath = path.join(__dirname, "logs");
@@ -123,8 +130,8 @@ client.once(Events.ClientReady, async () => {
     type: ActivityType.Watching,
   });
 
-  // Test scrittura
   const TEST_CH = "1455214028170334278";
+
   try {
     const ch = await client.channels.fetch(TEST_CH);
     if (ch) {
@@ -133,52 +140,6 @@ client.once(Events.ClientReady, async () => {
     }
   } catch (e) {
     console.error("❌ Test scrittura log FALLITO:", e?.message || e);
-  }
-});
-
-// ─────────────────────────────
-// PREFIX HANDLER
-// ─────────────────────────────
-const PREFIX = "!";
-
-client.on(Events.MessageCreate, async (message) => {
-  if (message.author.bot) return;
-  if (!message.guild) return;
-  if (!message.content.startsWith(PREFIX)) return;
-
-  const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
-  const commandName = args.shift()?.toLowerCase();
-  if (!commandName) return;
-
-  const command = client.commands.get(commandName);
-  if (!command) return;
-
-  try {
-    await command.execute(message, args);
-
-    // utile per logs/commands.js se vuoi segnare anche il successo
-    client.emit("commandSuccess", {
-      interaction: null,
-      message,
-      commandName,
-      args,
-      type: "prefix",
-    });
-  } catch (err) {
-    console.error("❌ Errore comando:", err);
-
-    client.emit("commandError", {
-      interaction: null,
-      message,
-      commandName,
-      args,
-      type: "prefix",
-      error: err,
-    });
-
-    try {
-      await message.channel.send("❌ Errore durante il comando.");
-    } catch {}
   }
 });
 
@@ -192,6 +153,11 @@ process.on("unhandledRejection", (err) => {
 process.on("uncaughtException", (err) => {
   console.error("UNCAUGHT EXCEPTION:", err);
 });
+
+// ─────────────────────────────
+// DEBUG TOKEN
+// ─────────────────────────────
+console.log("TOKEN caricato?", process.env.TOKEN ? "SI" : "NO");
 
 // ─────────────────────────────
 // LOGIN
