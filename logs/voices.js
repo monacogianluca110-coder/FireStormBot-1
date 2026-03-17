@@ -6,6 +6,10 @@ function formatTime(date = new Date()) {
   return `<t:${Math.floor(date.getTime() / 1000)}:F>`;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function getLogChannel(client) {
   try {
     const channel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
@@ -35,8 +39,10 @@ function executorField(executor, member) {
   return `${executor}\n\`${executor.tag}\`\nID: \`${executor.id}\``;
 }
 
-async function getRecentAuditEntry(guild, type, targetId = null, maxAgeMs = 15000) {
+async function getRecentAuditEntry(guild, type, targetId = null, maxAgeMs = 20000) {
   try {
+    await sleep(1500);
+
     const logs = await guild.fetchAuditLogs({
       type,
       limit: 10,
@@ -47,13 +53,14 @@ async function getRecentAuditEntry(guild, type, targetId = null, maxAgeMs = 1500
     const now = Date.now();
 
     const entry = logs.entries.find((e) => {
-      if (!e) return false;
-      if (!e.executor) return false;
+      if (!e || !e.executor) return false;
       if (now - e.createdTimestamp > maxAgeMs) return false;
 
       if (targetId && e.target?.id === targetId) return true;
 
-      if (!targetId) return true;
+      if (type === AuditLogEvent.MemberMove || type === AuditLogEvent.MemberDisconnect) {
+        return true;
+      }
 
       return false;
     });
@@ -66,6 +73,8 @@ async function getRecentAuditEntry(guild, type, targetId = null, maxAgeMs = 1500
 
 async function getVoiceUpdateExecutor(guild, targetId, key) {
   try {
+    await sleep(1200);
+
     const logs = await guild.fetchAuditLogs({
       type: AuditLogEvent.MemberUpdate,
       limit: 10,
@@ -79,7 +88,7 @@ async function getVoiceUpdateExecutor(guild, targetId, key) {
       if (!e) return false;
       if (!e.executor) return false;
       if (e.target?.id !== targetId) return false;
-      if (now - e.createdTimestamp > 15000) return false;
+      if (now - e.createdTimestamp > 20000) return false;
 
       return e.changes?.some((c) => c.key === key);
     });
@@ -208,6 +217,14 @@ module.exports = (client) => {
             name: "📝 Motivo",
             value: moveEntry.reason,
             inline: false,
+          });
+        }
+
+        if (moveEntry?.extra?.count) {
+          embed.addFields({
+            name: "📦 Membri coinvolti",
+            value: `\`${moveEntry.extra.count}\``,
+            inline: true,
           });
         }
 
