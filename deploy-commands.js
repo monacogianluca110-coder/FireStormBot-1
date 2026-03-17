@@ -1,42 +1,66 @@
 require("dotenv").config();
+
+const { REST, Routes } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
-const { REST, Routes } = require("discord.js");
 
 const commands = [];
-const commandsPath = path.join(__dirname, "commands");
+const commandsRoot = path.join(__dirname, "commands");
 
-for (const category of fs.readdirSync(commandsPath)) {
-  const categoryPath = path.join(commandsPath, category);
-  if (!fs.statSync(categoryPath).isDirectory()) continue;
+function loadCommandsFromTree(rootDir) {
+  if (!fs.existsSync(rootDir)) return;
 
-  for (const cmdFolder of fs.readdirSync(categoryPath)) {
-    const cmdPath = path.join(categoryPath, cmdFolder);
-    if (!fs.statSync(cmdPath).isDirectory()) continue;
+  for (const entry of fs.readdirSync(rootDir)) {
+    const fullPath = path.join(rootDir, entry);
+    const stat = fs.statSync(fullPath);
 
-    const file = fs.readdirSync(cmdPath).find(f => f.endsWith(".js"));
-    if (!file) continue;
+    if (stat.isDirectory()) {
+      loadCommandsFromTree(fullPath);
+      continue;
+    }
 
-    const command = require(path.join(cmdPath, file));
-    if (command.data) {
-      commands.push(command.data.toJSON());
+    if (!entry.endsWith(".js")) continue;
+
+    try {
+      const command = require(fullPath);
+
+      if (command?.data && typeof command.data.toJSON === "function") {
+        commands.push(command.data.toJSON());
+        console.log(`✅ Slash trovato: ${fullPath}`);
+      }
+    } catch (err) {
+      console.error(`❌ Errore caricando ${fullPath}`);
+      console.error(err);
     }
   }
+}
+
+loadCommandsFromTree(commandsRoot);
+
+if (!process.env.TOKEN) {
+  console.error("❌ TOKEN mancante nelle variabili ambiente.");
+  process.exit(1);
+}
+
+if (!process.env.CLIENT_ID) {
+  console.error("❌ CLIENT_ID mancante nelle variabili ambiente.");
+  process.exit(1);
 }
 
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
 (async () => {
   try {
-    console.log(`🔄 Registro ${commands.length} slash command...`);
+    console.log(`🚀 Deploy di ${commands.length} comandi slash...`);
 
     await rest.put(
-      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+      Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
     );
 
-    console.log("✅ Slash command registrati con successo.");
+    console.log("✅ Comandi slash deployati con successo.");
   } catch (error) {
+    console.error("❌ Errore durante il deploy dei comandi:");
     console.error(error);
   }
 })();
