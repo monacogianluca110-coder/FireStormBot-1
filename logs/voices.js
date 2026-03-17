@@ -9,8 +9,7 @@ function formatTime(date = new Date()) {
 async function getLogChannel(client) {
   try {
     const channel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-    if (!channel) return null;
-    return channel;
+    return channel || null;
   } catch {
     return null;
   }
@@ -36,7 +35,36 @@ function executorField(executor, member) {
   return `${executor}\n\`${executor.tag}\`\nID: \`${executor.id}\``;
 }
 
-async function getVoiceStateExecutor(guild, targetId, key) {
+async function getRecentAuditEntry(guild, type, targetId = null, maxAgeMs = 15000) {
+  try {
+    const logs = await guild.fetchAuditLogs({
+      type,
+      limit: 10,
+    }).catch(() => null);
+
+    if (!logs) return null;
+
+    const now = Date.now();
+
+    const entry = logs.entries.find((e) => {
+      if (!e) return false;
+      if (!e.executor) return false;
+      if (now - e.createdTimestamp > maxAgeMs) return false;
+
+      if (targetId && e.target?.id === targetId) return true;
+
+      if (!targetId) return true;
+
+      return false;
+    });
+
+    return entry || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getVoiceUpdateExecutor(guild, targetId, key) {
   try {
     const logs = await guild.fetchAuditLogs({
       type: AuditLogEvent.MemberUpdate,
@@ -49,20 +77,14 @@ async function getVoiceStateExecutor(guild, targetId, key) {
 
     const entry = logs.entries.find((e) => {
       if (!e) return false;
-      if (e.target?.id !== targetId) return false;
       if (!e.executor) return false;
+      if (e.target?.id !== targetId) return false;
       if (now - e.createdTimestamp > 15000) return false;
 
       return e.changes?.some((c) => c.key === key);
     });
 
-    if (!entry) return null;
-
-    return {
-      executor: entry.executor,
-      reason: entry.reason || null,
-      createdTimestamp: entry.createdTimestamp,
-    };
+    return entry || null;
   } catch {
     return null;
   }
@@ -97,32 +119,70 @@ module.exports = (client) => {
         return sendLog(client, embed);
       }
 
-      // 🚪 USCITA
+      // 🚪 USCITA / DISCONNECT FORZATO
       if (oldChannel && !newChannel) {
+        const disconnectEntry = await getRecentAuditEntry(
+          member.guild,
+          AuditLogEvent.MemberDisconnect,
+          member.id
+        );
+
+        const forced = !!disconnectEntry;
+        const executor = disconnectEntry?.executor || null;
+
         const embed = new EmbedBuilder()
-          .setColor(0xED4245)
+          .setColor(forced ? 0xFAA61A : 0xED4245)
           .setAuthor({
-            name: "🚪 Uscito dalla vocale",
+            name: forced ? "⛔ Disconnesso dalla vocale" : "🚪 Uscito dalla vocale",
             iconURL: member.user.displayAvatarURL({ dynamic: true }),
           })
           .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
           .addFields(
             { name: "👤 Utente", value: userField(member), inline: true },
             { name: "📍 Canale", value: `${oldChannel}\nID: \`${oldChannel.id}\``, inline: true },
+            {
+              name: "👮 Eseguito da",
+              value: forced ? executorField(executor, member) : "Utente stesso / Uscita normale",
+              inline: true,
+            },
+            {
+              name: "🧠 Tipo azione",
+              value: forced ? "Disconnessione forzata da staff" : "Uscita normale",
+              inline: true,
+            },
             { name: "🕒 Orario", value: formatTime(), inline: true }
-          )
-          .setFooter({ text: "FireStorm Logs • Voice Leave" })
+          );
+
+        if (disconnectEntry?.reason) {
+          embed.addFields({
+            name: "📝 Motivo",
+            value: disconnectEntry.reason,
+            inline: false,
+          });
+        }
+
+        embed
+          .setFooter({ text: "FireStorm Logs • Voice Leave / Disconnect" })
           .setTimestamp();
 
         return sendLog(client, embed);
       }
 
-      // 🔁 SPOSTAMENTO
+      // 🔁 SPOSTAMENTO VOCALE
       if (oldChannel && newChannel && oldChannel.id !== newChannel.id) {
+        const moveEntry = await getRecentAuditEntry(
+          member.guild,
+          AuditLogEvent.MemberMove,
+          member.id
+        );
+
+        const forcedMove = !!moveEntry;
+        const executor = moveEntry?.executor || null;
+
         const embed = new EmbedBuilder()
-          .setColor(0x5865F2)
+          .setColor(forcedMove ? 0xFAA61A : 0x5865F2)
           .setAuthor({
-            name: "🔁 Spostamento vocale",
+            name: forcedMove ? "🛡️ Spostato da staff" : "🔁 Spostamento vocale",
             iconURL: member.user.displayAvatarURL({ dynamic: true }),
           })
           .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
@@ -130,8 +190,28 @@ module.exports = (client) => {
             { name: "👤 Utente", value: userField(member), inline: true },
             { name: "📤 Da", value: `${oldChannel}\nID: \`${oldChannel.id}\``, inline: true },
             { name: "📥 A", value: `${newChannel}\nID: \`${newChannel.id}\``, inline: true },
-            { name: "🕒 Orario", value: formatTime(), inline: false }
-          )
+            {
+              name: "👮 Eseguito da",
+              value: forcedMove ? executorField(executor, member) : "Utente stesso / Cambio manuale",
+              inline: true,
+            },
+            {
+              name: "🧠 Tipo azione",
+              value: forcedMove ? "Spostamento forzato da staff" : "Cambio canale normale",
+              inline: true,
+            },
+            { name: "🕒 Orario", value: formatTime(), inline: true }
+          );
+
+        if (moveEntry?.reason) {
+          embed.addFields({
+            name: "📝 Motivo",
+            value: moveEntry.reason,
+            inline: false,
+          });
+        }
+
+        embed
           .setFooter({ text: "FireStorm Logs • Voice Move" })
           .setTimestamp();
 
@@ -140,31 +220,21 @@ module.exports = (client) => {
 
       // 🔇 SERVER MUTE / UNMUTE
       if (oldState.serverMute !== newState.serverMute) {
-        const audit = await getVoiceStateExecutor(member.guild, member.id, "mute");
-        const executor = audit?.executor || null;
-
+        const entry = await getVoiceUpdateExecutor(member.guild, member.id, "mute");
+        const executor = entry?.executor || null;
         const isSelfAction = executor && executor.id === member.id;
-        const actionText = newState.serverMute ? "🔇 Mutato" : "🔊 Unmutato";
 
         const embed = new EmbedBuilder()
           .setColor(newState.serverMute ? 0xFAA61A : 0x57F287)
           .setAuthor({
-            name: actionText,
+            name: newState.serverMute ? "🔇 Mutato" : "🔊 Unmutato",
             iconURL: member.user.displayAvatarURL({ dynamic: true }),
           })
           .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
           .addFields(
             { name: "👤 Utente", value: userField(member), inline: true },
-            {
-              name: "👮 Eseguito da",
-              value: executorField(executor, member),
-              inline: true,
-            },
-            {
-              name: "📍 Canale",
-              value: `${newChannel || oldChannel || "Sconosciuto"}`,
-              inline: true,
-            },
+            { name: "👮 Eseguito da", value: executorField(executor, member), inline: true },
+            { name: "📍 Canale", value: `${newChannel || oldChannel || "Sconosciuto"}`, inline: true },
             {
               name: "🧠 Tipo azione",
               value: isSelfAction
@@ -179,17 +249,13 @@ module.exports = (client) => {
               value: newState.serverMute ? "`Mutato dal server`" : "`Unmutato dal server`",
               inline: true,
             },
-            {
-              name: "🕒 Orario",
-              value: formatTime(),
-              inline: true,
-            }
+            { name: "🕒 Orario", value: formatTime(), inline: true }
           );
 
-        if (audit?.reason) {
+        if (entry?.reason) {
           embed.addFields({
             name: "📝 Motivo",
-            value: audit.reason,
+            value: entry.reason,
             inline: false,
           });
         }
@@ -203,31 +269,21 @@ module.exports = (client) => {
 
       // 🎧 SERVER DEAF / UNDEAF
       if (oldState.serverDeaf !== newState.serverDeaf) {
-        const audit = await getVoiceStateExecutor(member.guild, member.id, "deaf");
-        const executor = audit?.executor || null;
-
+        const entry = await getVoiceUpdateExecutor(member.guild, member.id, "deaf");
+        const executor = entry?.executor || null;
         const isSelfAction = executor && executor.id === member.id;
-        const actionText = newState.serverDeaf ? "🎧 Deafened" : "🔊 Undeafened";
 
         const embed = new EmbedBuilder()
           .setColor(newState.serverDeaf ? 0xFAA61A : 0x57F287)
           .setAuthor({
-            name: actionText,
+            name: newState.serverDeaf ? "🎧 Deafened" : "🔊 Undeafened",
             iconURL: member.user.displayAvatarURL({ dynamic: true }),
           })
           .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
           .addFields(
             { name: "👤 Utente", value: userField(member), inline: true },
-            {
-              name: "👮 Eseguito da",
-              value: executorField(executor, member),
-              inline: true,
-            },
-            {
-              name: "📍 Canale",
-              value: `${newChannel || oldChannel || "Sconosciuto"}`,
-              inline: true,
-            },
+            { name: "👮 Eseguito da", value: executorField(executor, member), inline: true },
+            { name: "📍 Canale", value: `${newChannel || oldChannel || "Sconosciuto"}`, inline: true },
             {
               name: "🧠 Tipo azione",
               value: isSelfAction
@@ -242,17 +298,13 @@ module.exports = (client) => {
               value: newState.serverDeaf ? "`Deafened dal server`" : "`Undeafened dal server`",
               inline: true,
             },
-            {
-              name: "🕒 Orario",
-              value: formatTime(),
-              inline: true,
-            }
+            { name: "🕒 Orario", value: formatTime(), inline: true }
           );
 
-        if (audit?.reason) {
+        if (entry?.reason) {
           embed.addFields({
             name: "📝 Motivo",
-            value: audit.reason,
+            value: entry.reason,
             inline: false,
           });
         }
@@ -280,21 +332,13 @@ module.exports = (client) => {
               value: `${member}\n\`${member.user.tag}\`\nID: \`${member.id}\`\n**Auto-azione**`,
               inline: true,
             },
-            {
-              name: "📍 Canale",
-              value: `${newChannel || oldChannel || "Sconosciuto"}`,
-              inline: true,
-            },
+            { name: "📍 Canale", value: `${newChannel || oldChannel || "Sconosciuto"}`, inline: true },
             {
               name: "📌 Stato",
               value: newState.selfMute ? "`Self Muted`" : "`Self Unmuted`",
               inline: true,
             },
-            {
-              name: "🕒 Orario",
-              value: formatTime(),
-              inline: true,
-            }
+            { name: "🕒 Orario", value: formatTime(), inline: true }
           )
           .setFooter({ text: "FireStorm Logs • Voice Self Mute" })
           .setTimestamp();
@@ -318,21 +362,13 @@ module.exports = (client) => {
               value: `${member}\n\`${member.user.tag}\`\nID: \`${member.id}\`\n**Auto-azione**`,
               inline: true,
             },
-            {
-              name: "📍 Canale",
-              value: `${newChannel || oldChannel || "Sconosciuto"}`,
-              inline: true,
-            },
+            { name: "📍 Canale", value: `${newChannel || oldChannel || "Sconosciuto"}`, inline: true },
             {
               name: "📌 Stato",
               value: newState.selfDeaf ? "`Self Deafened`" : "`Self Undeafened`",
               inline: true,
             },
-            {
-              name: "🕒 Orario",
-              value: formatTime(),
-              inline: true,
-            }
+            { name: "🕒 Orario", value: formatTime(), inline: true }
           )
           .setFooter({ text: "FireStorm Logs • Voice Self Deaf" })
           .setTimestamp();
