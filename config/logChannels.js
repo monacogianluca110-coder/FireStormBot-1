@@ -7,8 +7,8 @@ module.exports = {
   serverLog: "1455214028170334278",
 
   // opzionali extra
-  roleLog: "",
-  channelLog: "",
-  emojiLog: "",
-  stickerLog: ""
+  roleLog: "1483456307649577002",
+  channelLog: "1483456331263377428",
+  emojiLog: "1483456280327880794",
+  stickerLog: "1483456356747968667"
 };
