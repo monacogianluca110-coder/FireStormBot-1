@@ -1,7 +1,10 @@
+const { Events } = require("discord.js");
+
 const prefix = "!";
 
 module.exports = {
-  name: "messageCreate",
+  name: Events.MessageCreate,
+
   async execute(message, client) {
     try {
       if (message.author.bot) return;
@@ -16,7 +19,7 @@ module.exports = {
       const command = message.client.commands.get(commandName);
       if (!command) return;
 
-      await command.execute(message, args);
+      await command.execute(message, args, client);
 
       client.emit("commandSuccess", {
         interaction: null,
