@@ -28,12 +28,19 @@ async function sendLog(client, embed) {
   await channel.send({ embeds: [embed] }).catch(() => {});
 }
 
-async function getExecutor(guild, type, targetId) {
+async function getExecutor(guild, type, targetId = null) {
   try {
-    const logs = await guild.fetchAuditLogs({ type, limit: 6 }).catch(() => null);
+    const logs = await guild.fetchAuditLogs({ type, limit: 10 }).catch(() => null);
     if (!logs) return null;
 
-    const entry = logs.entries.find((e) => e?.target?.id === targetId);
+    const now = Date.now();
+
+    const entry = logs.entries.find((e) => {
+      const sameTarget = targetId ? e?.target?.id === targetId : true;
+      const recent = now - e.createdTimestamp < 15000;
+      return sameTarget && recent;
+    });
+
     if (!entry?.executor) return null;
 
     return {
@@ -53,8 +60,7 @@ function formatPermissions(permissions) {
   try {
     const perms = new PermissionsBitField(permissions).toArray();
     if (!perms.length) return "Nessuno";
-
-    return cut(perms.map(p => `• ${p}`).join("\n"), 1000);
+    return cut(perms.map((p) => `• ${p}`).join("\n"), 1000);
   } catch {
     return "Impossibile leggere i permessi";
   }
@@ -65,6 +71,9 @@ function yesNo(value) {
 }
 
 module.exports = (client) => {
+  // ─────────────────────────────
+  // ROLE CREATE
+  // ─────────────────────────────
   client.on("roleCreate", async (role) => {
     const executor = await getExecutor(role.guild, AuditLogEvent.RoleCreate, role.id);
 
@@ -127,6 +136,9 @@ module.exports = (client) => {
     await sendLog(client, embed);
   });
 
+  // ─────────────────────────────
+  // ROLE DELETE
+  // ─────────────────────────────
   client.on("roleDelete", async (role) => {
     const executor = await getExecutor(role.guild, AuditLogEvent.RoleDelete, role.id);
 
@@ -189,6 +201,9 @@ module.exports = (client) => {
     await sendLog(client, embed);
   });
 
+  // ─────────────────────────────
+  // ROLE UPDATE
+  // ─────────────────────────────
   client.on("roleUpdate", async (oldRole, newRole) => {
     const changes = [];
 
@@ -261,5 +276,110 @@ module.exports = (client) => {
       .setTimestamp();
 
     await sendLog(client, embed);
+  });
+
+  // ─────────────────────────────
+  // MEMBER ROLE ADD / REMOVE
+  // ─────────────────────────────
+  client.on("guildMemberUpdate", async (oldMember, newMember) => {
+    try {
+      const oldRoles = oldMember.roles.cache;
+      const newRoles = newMember.roles.cache;
+
+      const addedRoles = newRoles.filter((role) => !oldRoles.has(role.id));
+      const removedRoles = oldRoles.filter((role) => !newRoles.has(role.id));
+
+      if (!addedRoles.size && !removedRoles.size) return;
+
+      const executor = await getExecutor(
+        newMember.guild,
+        AuditLogEvent.MemberRoleUpdate,
+        newMember.id
+      );
+
+      for (const [, role] of addedRoles) {
+        const embed = new EmbedBuilder()
+          .setColor(role.color || 0x57F287)
+          .setAuthor({
+            name: "✅ Ruolo Assegnato",
+            iconURL: newMember.user.displayAvatarURL({ dynamic: true }),
+          })
+          .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true, size: 256 }))
+          .addFields(
+            {
+              name: "👤 Utente",
+              value: `${newMember.user.tag}\nID: \`${newMember.id}\`\nMenzione: <@${newMember.id}>`,
+              inline: false,
+            },
+            {
+              name: "🏷️ Ruolo dato",
+              value: `${role}\nNome: \`${role.name}\`\nID: \`${role.id}\``,
+              inline: false,
+            },
+            {
+              name: "👮 Assegnato da",
+              value: executor ? `${executor.tag} (\`${executor.id}\`)` : "Sconosciuto / Automatico",
+              inline: true,
+            },
+            {
+              name: "📍 Totale ruoli utente",
+              value: `\`${newMember.roles.cache.filter(r => r.id !== newMember.guild.id).size}\``,
+              inline: true,
+            },
+            {
+              name: "🕒 Orario",
+              value: formatTime(),
+              inline: true,
+            }
+          )
+          .setFooter({ text: "FireStorm Logs • Member Role Add" })
+          .setTimestamp();
+
+        await sendLog(client, embed);
+      }
+
+      for (const [, role] of removedRoles) {
+        const embed = new EmbedBuilder()
+          .setColor(0xED4245)
+          .setAuthor({
+            name: "❌ Ruolo Rimosso",
+            iconURL: newMember.user.displayAvatarURL({ dynamic: true }),
+          })
+          .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true, size: 256 }))
+          .addFields(
+            {
+              name: "👤 Utente",
+              value: `${newMember.user.tag}\nID: \`${newMember.id}\`\nMenzione: <@${newMember.id}>`,
+              inline: false,
+            },
+            {
+              name: "🏷️ Ruolo tolto",
+              value: `${role}\nNome: \`${role.name}\`\nID: \`${role.id}\``,
+              inline: false,
+            },
+            {
+              name: "👮 Rimosso da",
+              value: executor ? `${executor.tag} (\`${executor.id}\`)` : "Sconosciuto / Automatico",
+              inline: true,
+            },
+            {
+              name: "📍 Totale ruoli utente",
+              value: `\`${newMember.roles.cache.filter(r => r.id !== newMember.guild.id).size}\``,
+              inline: true,
+            },
+            {
+              name: "🕒 Orario",
+              value: formatTime(),
+              inline: true,
+            }
+          )
+          .setFooter({ text: "FireStorm Logs • Member Role Remove" })
+          .setTimestamp();
+
+        await sendLog(client, embed);
+      }
+    } catch (err) {
+      console.error("❌ Errore logs ruoli membro:", err);
+    }
   });
 };
