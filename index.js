@@ -50,6 +50,7 @@ let loadedSlash = 0;
 
 function loadCommandFile(filePath) {
   try {
+    delete require.cache[require.resolve(filePath)];
     const command = require(filePath);
 
     if (command?.name && typeof command.execute === "function") {
@@ -70,24 +71,27 @@ function loadCommandFile(filePath) {
   }
 }
 
-if (fs.existsSync(commandsRoot)) {
-  for (const entry of fs.readdirSync(commandsRoot)) {
-    const entryPath = path.join(commandsRoot, entry);
-    if (!fs.statSync(entryPath).isDirectory()) continue;
+function scanCommands(dirPath) {
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
 
-    for (const subEntry of fs.readdirSync(entryPath)) {
-      const subEntryPath = path.join(entryPath, subEntry);
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
 
-      if (fs.statSync(subEntryPath).isDirectory()) {
-        const file = fs.readdirSync(subEntryPath).find((f) => f.endsWith(".js"));
-        if (file) {
-          loadCommandFile(path.join(subEntryPath, file));
-        }
-      } else if (subEntry.endsWith(".js")) {
-        loadCommandFile(subEntryPath);
-      }
+    if (entry.isDirectory()) {
+      scanCommands(fullPath);
+      continue;
+    }
+
+    if (entry.isFile() && entry.name.endsWith(".js")) {
+      loadCommandFile(fullPath);
     }
   }
+}
+
+if (fs.existsSync(commandsRoot)) {
+  scanCommands(commandsRoot);
+} else {
+  console.log("⚠️ Cartella commands/ non trovata");
 }
 
 console.log(`✅ Caricati ${loadedPrefix} comandi normali`);
@@ -95,6 +99,12 @@ console.log(`✅ Caricati ${loadedSlash} slash commands`);
 
 // ─────────────────────────────
 // LOAD EVENTS
+// ogni file in events/ deve esportare:
+// {
+//   name: "interactionCreate",
+//   once: false,
+//   async execute(...args, client) {}
+// }
 // ─────────────────────────────
 const eventsPath = path.join(__dirname, "events");
 
@@ -104,7 +114,9 @@ if (fs.existsSync(eventsPath)) {
 
   for (const file of files) {
     try {
-      const event = require(path.join(eventsPath, file));
+      const filePath = path.join(eventsPath, file);
+      delete require.cache[require.resolve(filePath)];
+      const event = require(filePath);
 
       if (!event?.name || typeof event.execute !== "function") {
         console.log(`❌ Evento non valido: ${file}`);
@@ -129,6 +141,8 @@ if (fs.existsSync(eventsPath)) {
 
 // ─────────────────────────────
 // LOAD LOGS SYSTEM
+// ogni file in logs/ deve esportare una funzione:
+// module.exports = (client) => { ... }
 // ─────────────────────────────
 const logsPath = path.join(__dirname, "logs");
 
@@ -138,7 +152,9 @@ if (fs.existsSync(logsPath)) {
 
   for (const file of logFiles) {
     try {
-      const logModule = require(path.join(logsPath, file));
+      const filePath = path.join(logsPath, file);
+      delete require.cache[require.resolve(filePath)];
+      const logModule = require(filePath);
 
       if (typeof logModule !== "function") {
         console.log(`❌ Log non valido: ${file}`);
@@ -155,6 +171,99 @@ if (fs.existsSync(logsPath)) {
 } else {
   console.log("⚠️ Cartella logs/ non trovata");
 }
+
+// ─────────────────────────────
+// PREFIX HANDLER
+// ─────────────────────────────
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    if (!message || !message.guild) return;
+    if (message.author?.bot) return;
+    if (!message.content?.startsWith(client.prefix)) return;
+
+    const args = message.content.slice(client.prefix.length).trim().split(/\s+/);
+    const commandName = args.shift()?.toLowerCase();
+
+    if (!commandName) return;
+
+    const command = client.commands.get(commandName);
+    if (!command || typeof command.execute !== "function") return;
+
+    await command.execute(message, args, client);
+
+    client.emit("commandSuccess", {
+      interaction: null,
+      message,
+      commandName,
+      args,
+      type: "prefix",
+    });
+  } catch (err) {
+    console.error("❌ Errore comando prefix:", err);
+
+    client.emit("commandError", {
+      interaction: null,
+      message,
+      commandName: message?.content || "unknown",
+      args: [],
+      type: "prefix",
+      error: err,
+    });
+
+    try {
+      await message.channel.send("❌ Errore durante il comando.");
+    } catch {}
+  }
+});
+
+// ─────────────────────────────
+// SLASH HANDLER
+// esegue solo le slash commands
+// i bottoni/select menu restano ai tuoi eventi tipo ticketSystem.js
+// ─────────────────────────────
+client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    if (!interaction.isChatInputCommand()) return;
+
+    const command = client.slashCommands.get(interaction.commandName.toLowerCase());
+    if (!command || typeof command.execute !== "function") return;
+
+    await command.execute(interaction, client);
+
+    client.emit("commandSuccess", {
+      interaction,
+      message: null,
+      commandName: interaction.commandName,
+      args: [],
+      type: "slash",
+    });
+  } catch (err) {
+    console.error("❌ Errore slash command:", err);
+
+    client.emit("commandError", {
+      interaction,
+      message: null,
+      commandName: interaction?.commandName || "unknown",
+      args: [],
+      type: "slash",
+      error: err,
+    });
+
+    try {
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({
+          content: "❌ Errore durante il comando.",
+          ephemeral: true,
+        });
+      } else {
+        await interaction.reply({
+          content: "❌ Errore durante il comando.",
+          ephemeral: true,
+        });
+      }
+    } catch {}
+  }
+});
 
 // ─────────────────────────────
 // READY
