@@ -7,12 +7,7 @@ module.exports = (client) => {
 
   const basePath = path.join(__dirname, "..", "commands");
 
-  if (!fs.existsSync(basePath)) {
-    console.log("⚠️ Cartella commands non trovata");
-    return;
-  }
-
-  let prefixCount = 0;
+  let normalCount = 0;
   let slashCount = 0;
 
   for (const category of fs.readdirSync(basePath)) {
@@ -23,33 +18,23 @@ module.exports = (client) => {
       const cmdPath = path.join(categoryPath, cmdFolder);
       if (!fs.statSync(cmdPath).isDirectory()) continue;
 
-      const file = fs.readdirSync(cmdPath).find((f) => f.endsWith(".js"));
+      const file = fs.readdirSync(cmdPath).find(f => f.endsWith(".js"));
       if (!file) continue;
 
-      try {
-        const command = require(path.join(cmdPath, file));
+      const command = require(path.join(cmdPath, file));
 
-        // Comando normale
-        if (command?.name && typeof command.execute === "function") {
-          client.commands.set(command.name.toLowerCase(), command);
-          prefixCount++;
-        }
+      if (command?.name && typeof command.execute === "function") {
+        client.commands.set(command.name.toLowerCase(), command);
+        normalCount++;
+      }
 
-        // Slash command
-        if (command?.data && typeof command.execute === "function") {
-          const slashName = command.data?.name;
-          if (slashName) {
-            client.slashCommands.set(slashName.toLowerCase(), command);
-            slashCount++;
-          }
-        }
-      } catch (err) {
-        console.error(`❌ Errore caricando comando: ${category}/${cmdFolder}/${file}`);
-        console.error(err);
+      if (command?.data && typeof command.execute === "function") {
+        client.slashCommands.set(command.data.name.toLowerCase(), command);
+        slashCount++;
       }
     }
   }
 
-  console.log(`✅ Comandi normali caricati: ${prefixCount}`);
+  console.log(`✅ Comandi normali caricati: ${normalCount}`);
   console.log(`✅ Slash commands caricati: ${slashCount}`);
 };
