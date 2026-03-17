@@ -2,16 +2,44 @@ const prefix = "!";
 
 module.exports = {
   name: "messageCreate",
-  async execute(message) {
-    if (message.author.bot) return;
-    if (!message.content.startsWith(prefix)) return;
+  async execute(message, client) {
+    try {
+      if (message.author.bot) return;
+      if (!message.guild) return;
+      if (!message.content.startsWith(prefix)) return;
 
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
+      const args = message.content.slice(prefix.length).trim().split(/\s+/);
+      const commandName = args.shift()?.toLowerCase();
 
-    const command = message.client.commands.get(commandName);
-    if (!command) return;
+      if (!commandName) return;
 
-    await command.execute(message, args);
+      const command = message.client.commands.get(commandName);
+      if (!command) return;
+
+      await command.execute(message, args);
+
+      client.emit("commandSuccess", {
+        interaction: null,
+        message,
+        commandName,
+        args,
+        type: "prefix",
+      });
+    } catch (err) {
+      console.error("❌ Errore in messageCreate:", err);
+
+      client.emit("commandError", {
+        interaction: null,
+        message,
+        commandName: message.content,
+        args: [],
+        type: "prefix",
+        error: err,
+      });
+
+      try {
+        await message.channel.send("❌ Errore durante il comando.");
+      } catch {}
+    }
   },
 };
