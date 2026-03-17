@@ -25,16 +25,11 @@ module.exports = {
         } catch {}
 
         const guild = interaction.guild;
-        if (!guild) {
-          return interaction.editReply("❌ Funziona solo in un server.");
-        }
+        if (!guild) return interaction.editReply("❌ Funziona solo in un server.");
 
         const roleId = interaction.customId.split(":")[1];
         const role = guild.roles.cache.get(roleId);
-
-        if (!role) {
-          return interaction.editReply("❌ Ruolo non trovato (ID errato o eliminato).");
-        }
+        if (!role) return interaction.editReply("❌ Ruolo non trovato.");
 
         const me = await guild.members.fetchMe();
 
@@ -43,13 +38,12 @@ module.exports = {
         }
 
         if (role.managed) {
-          return interaction.editReply("❌ Questo ruolo è **gestito** e non si può assegnare.");
+          return interaction.editReply("❌ Questo ruolo è gestito e non si può assegnare.");
         }
 
         if (role.position >= me.roles.highest.position) {
           return interaction.editReply(
-            "❌ Non posso assegnare questo ruolo perché è **più alto o uguale** al mio.\n" +
-            "➡️ Sposta il ruolo del bot **sopra** questo ruolo nelle impostazioni ruoli."
+            "❌ Non posso assegnare questo ruolo perché è più alto o uguale al mio."
           );
         }
 
