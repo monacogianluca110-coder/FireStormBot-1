@@ -1,14 +1,15 @@
-const { Events } = require("discord.js");
-
-const prefix = "!";
-
 module.exports = {
-  name: Events.MessageCreate,
+  name: "messageCreate",
+  once: false,
 
   async execute(message, client) {
+    const prefix = "!";
+
     try {
-      if (message.author.bot) return;
+      if (!message) return;
+      if (message.author?.bot) return;
       if (!message.guild) return;
+      if (!message.content) return;
       if (!message.content.startsWith(prefix)) return;
 
       const args = message.content.slice(prefix.length).trim().split(/\s+/);
@@ -16,8 +17,8 @@ module.exports = {
 
       if (!commandName) return;
 
-      const command = message.client.commands.get(commandName);
-      if (!command) return;
+      const command = client.commands?.get(commandName);
+      if (!command || typeof command.execute !== "function") return;
 
       await command.execute(message, args, client);
 
@@ -34,7 +35,7 @@ module.exports = {
       client.emit("commandError", {
         interaction: null,
         message,
-        commandName: message.content,
+        commandName: message?.content || "unknown",
         args: [],
         type: "prefix",
         error: err,
