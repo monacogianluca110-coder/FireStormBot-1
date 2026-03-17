@@ -1,418 +1,693 @@
 const {
-  AuditLogEvent,
   EmbedBuilder,
-  PermissionsBitField,
-  ChannelType,
+  AuditLogEvent,
+  ChannelType
 } = require("discord.js");
 
 const logCh = require("../config/logChannels");
-const { sendLog, baseEmbed, cut } = require("../utils/logger");
-
-// --- Piccola cache inviti per capire "da che invite è entrato"
-const invitesCache = new Map(); // guildId -> Map(code -> uses)
-
-async function refreshInvites(guild) {
-  try {
-    const me = guild.members.me;
-    if (!me) return;
-    if (!me.permissions.has(PermissionsBitField.Flags.ManageGuild)) return;
-
-    const invites = await guild.invites.fetch().catch(() => null);
-    if (!invites) return;
-
-    const map = new Map();
-    invites.forEach((i) => map.set(i.code, i.uses ?? 0));
-    invitesCache.set(guild.id, map);
-  } catch {}
-}
-
-async function findUsedInvite(guild) {
-  try {
-    const oldMap = invitesCache.get(guild.id) || new Map();
-    const invites = await guild.invites.fetch().catch(() => null);
-    if (!invites) return null;
-
-    let used = null;
-    const newMap = new Map();
-    invites.forEach((i) => {
-      const newUses = i.uses ?? 0;
-      const oldUses = oldMap.get(i.code) ?? 0;
-      if (newUses > oldUses) used = i;
-      newMap.set(i.code, newUses);
-    });
-
-    invitesCache.set(guild.id, newMap);
-    return used;
-  } catch {
-    return null;
-  }
-}
-
-async function getLastAudit(guild, type, predicate) {
-  try {
-    const me = guild.members.me;
-    if (!me) return null;
-    if (!me.permissions.has(PermissionsBitField.Flags.ViewAuditLog)) return null;
-
-    const logs = await guild.fetchAuditLogs({ limit: 6, type }).catch(() => null);
-    if (!logs) return null;
-
-    const entry = logs.entries.find((e) => (predicate ? predicate(e) : true));
-    return entry || null;
-  } catch {
-    return null;
-  }
-}
 
 module.exports = (client) => {
-  // ---------- READY: prepara cache inviti
-  client.on("ready", async () => {
-    for (const [, guild] of client.guilds.cache) {
-      await refreshInvites(guild);
+  function cut(text, max = 1024) {
+    if (!text) return "-";
+    text = String(text);
+    return text.length > max ? text.slice(0, max - 3) + "..." : text;
+  }
+
+  function getChannel(client, channelId) {
+    if (!channelId) return null;
+    return client.channels.cache.get(channelId) || null;
+  }
+
+  async function sendLog(client, channelId, payload) {
+    try {
+      const channel = getChannel(client, channelId);
+      if (!channel) return;
+      await channel.send(payload);
+    } catch (err) {
+      console.error("[LOG ERROR]", err);
     }
-  });
+  }
 
-  client.on("guildCreate", async (guild) => refreshInvites(guild));
+  function userTag(user) {
+    return user ? `${user.tag} (${user.id})` : "-";
+  }
 
-  // ---------- INVITE CREATE/DELETE (invite-logs)
-  client.on("inviteCreate", async (invite) => {
-    const e = baseEmbed("🔗 INVITE CREATO")
-      .addFields(
-        { name: "Codice", value: cut(invite.code, 1024), inline: true },
-        { name: "Canale", value: invite.channel ? `<#${invite.channel.id}>` : "—", inline: true },
-        { name: "Creato da", value: invite.inviter ? `${invite.inviter} \`(${invite.inviter.id})\`` : "—" },
-        { name: "Max uses", value: String(invite.maxUses ?? "—"), inline: true },
-        { name: "Expires", value: invite.expiresAt ? `<t:${Math.floor(invite.expiresAt.getTime()/1000)}:R>` : "Mai", inline: true },
-        { name: "Temporary", value: String(invite.temporary ?? false), inline: true }
-      );
+  function userAvatar(user) {
+    return user?.displayAvatarURL?.({ dynamic: true, size: 1024 }) || null;
+  }
 
-    await sendLog(client, logCh.inviteLog, { embeds: [e] });
-    await refreshInvites(invite.guild);
-  });
+  function baseEmbed(title, color = 0x2b2d31) {
+    return new EmbedBuilder()
+      .setColor(color)
+      .setTitle(title)
+      .setTimestamp();
+  }
 
-  client.on("inviteDelete", async (invite) => {
-    const e = baseEmbed("🗑️ INVITE ELIMINATO")
-      .addFields(
-        { name: "Codice", value: cut(invite.code, 1024), inline: true },
-        { name: "Canale", value: invite.channel ? `<#${invite.channel.id}>` : "—", inline: true }
-      );
+  async function getLastAudit(guild, type, predicate = null) {
+    try {
+      const fetched = await guild.fetchAuditLogs({ type, limit: 6 });
+      const entry = fetched.entries.find((e) => {
+        if (!predicate) return true;
+        return predicate(e);
+      });
+      return entry || null;
+    } catch {
+      return null;
+    }
+  }
 
-    await sendLog(client, logCh.inviteLog, { embeds: [e] });
-    await refreshInvites(invite.guild);
-  });
+  function formatPerms(perms) {
+    if (!perms) return "-";
+    const arr = perms.toArray?.() || [];
+    if (!arr.length) return "-";
+    return cut(arr.join(", "), 1024);
+  }
 
-  // ---------- MEMBER JOIN (registro-dei-membri + invite-logs)
+  function formatChannel(channel) {
+    if (!channel) return "-";
+    return `<#${channel.id}> (${channel.name})`;
+  }
+
+  function formatRole(role) {
+    if (!role) return "-";
+    return `<@&${role.id}> (${role.name})`;
+  }
+
+  function formatDate(ts) {
+    if (!ts) return "-";
+    return `<t:${Math.floor(ts / 1000)}:F>`;
+  }
+
+  function formatBool(value) {
+    return value ? "Sì" : "No";
+  }
+
+  function memberThumb(member) {
+    return member?.user?.displayAvatarURL?.({ dynamic: true, size: 1024 }) || null;
+  }
+
+  // =========================
+  // MEMBER LOGS
+  // =========================
+
   client.on("guildMemberAdd", async (member) => {
-    const usedInvite = await findUsedInvite(member.guild);
+    const inviterData = member.guild.invites?.cache?.size ? null : null;
 
-    const createdTs = Math.floor(member.user.createdTimestamp / 1000);
-    const joinedTs = Math.floor(Date.now() / 1000);
-
-    const roles = member.roles.cache
-      .filter((r) => r.id !== member.guild.id)
-      .map((r) => `<@&${r.id}>`)
-      .slice(0, 25);
-
-    const e = baseEmbed("👤 NUOVO MEMBRO ENTRATO")
-      .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
+    const e = baseEmbed("📥 MEMBRO ENTRATO", 0x57f287)
+      .setThumbnail(memberThumb(member))
+      .setImage(userAvatar(member.user))
       .addFields(
-        { name: "Utente", value: `${member.user} \`(${member.user.id})\`` },
-        { name: "Username", value: cut(member.user.tag ?? member.user.username), inline: true },
-        { name: "Account creato", value: `<t:${createdTs}:F> • <t:${createdTs}:R>`, inline: false },
-        { name: "Entrato", value: `<t:${joinedTs}:F>`, inline: false },
-        { name: "Bot?", value: String(member.user.bot), inline: true },
-        { name: "Ruoli iniziali", value: roles.length ? roles.join(" ") : "—" }
+        { name: "Utente", value: `${member.user} \n${userTag(member.user)}`, inline: false },
+        { name: "Account creato", value: formatDate(member.user.createdTimestamp), inline: true },
+        { name: "Entrato nel server", value: formatDate(Date.now()), inline: true },
+        { name: "Bot", value: formatBool(member.user.bot), inline: true }
       );
 
     await sendLog(client, logCh.memberLog, { embeds: [e] });
-
-    // Invito usato -> in invite-logs
-    const ie = baseEmbed("📌 INVITE USATO (JOIN)")
-      .addFields(
-        { name: "Membro", value: `${member.user} \`(${member.user.id})\`` },
-        { name: "Codice", value: usedInvite ? cut(usedInvite.code) : "Non rilevabile", inline: true },
-        { name: "Creato da", value: usedInvite?.inviter ? `${usedInvite.inviter} \`(${usedInvite.inviter.id})\`` : "—", inline: true },
-        { name: "Canale", value: usedInvite?.channel ? `<#${usedInvite.channel.id}>` : "—", inline: true },
-        { name: "Uses", value: usedInvite ? String(usedInvite.uses ?? "—") : "—", inline: true }
-      );
-
-    await sendLog(client, logCh.inviteLog, { embeds: [ie] });
   });
 
-  // ---------- MEMBER LEAVE (registro-dei-membri)
   client.on("guildMemberRemove", async (member) => {
-    const e = baseEmbed("🚪 MEMBRO USCITO")
-      .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
+    const e = baseEmbed("📤 MEMBRO USCITO", 0xed4245)
+      .setThumbnail(memberThumb(member))
+      .setImage(userAvatar(member.user))
       .addFields(
-        { name: "Utente", value: `${member.user} \`(${member.user.id})\`` },
-        { name: "Bot?", value: String(member.user.bot), inline: true }
+        { name: "Utente", value: `${member.user?.tag || "-"} (${member.id})`, inline: false },
+        { name: "Nickname", value: cut(member.nickname || "-"), inline: true },
+        { name: "Entrato il", value: member.joinedTimestamp ? formatDate(member.joinedTimestamp) : "-", inline: true },
+        { name: "Ruoli", value: cut(member.roles.cache.filter(r => r.id !== member.guild.id).map(r => r.name).join(", ") || "-", 1024), inline: false }
       );
 
     await sendLog(client, logCh.memberLog, { embeds: [e] });
   });
 
-  // ---------- MEMBER UPDATE (nickname/ruoli) -> registro-dei-membri
-  client.on("guildMemberUpdate", async (oldM, newM) => {
-    if (oldM.nickname !== newM.nickname) {
-      const e = baseEmbed("📝 NICKNAME CAMBIATO")
+  client.on("guildMemberUpdate", async (oldMember, newMember) => {
+    // Boost start/stop
+    if (!oldMember.premiumSince && newMember.premiumSince) {
+      const e = baseEmbed("🚀 BOOST INIZIATO", 0xff73fa)
+        .setThumbnail(memberThumb(newMember))
+        .setImage(userAvatar(newMember.user))
         .addFields(
-          { name: "Utente", value: `${newM.user} \`(${newM.user.id})\`` },
-          { name: "Prima", value: cut(oldM.nickname ?? oldM.user.username), inline: true },
-          { name: "Dopo", value: cut(newM.nickname ?? newM.user.username), inline: true }
+          { name: "Utente", value: `${newMember.user} \n${userTag(newMember.user)}`, inline: false },
+          { name: "Boost dal", value: formatDate(newMember.premiumSinceTimestamp || Date.now()), inline: true }
         );
 
       await sendLog(client, logCh.memberLog, { embeds: [e] });
     }
 
-    // ruoli
-    const oldRoles = new Set(oldM.roles.cache.keys());
-    const newRoles = new Set(newM.roles.cache.keys());
-
-    const added = [...newRoles].filter((id) => !oldRoles.has(id) && id !== newM.guild.id);
-    const removed = [...oldRoles].filter((id) => !newRoles.has(id) && id !== newM.guild.id);
-
-    if (added.length || removed.length) {
-      const e = baseEmbed("🎭 RUOLI MODIFICATI")
+    if (oldMember.premiumSince && !newMember.premiumSince) {
+      const e = baseEmbed("📉 BOOST RIMOSSO", 0x808080)
+        .setThumbnail(memberThumb(newMember))
+        .setImage(userAvatar(newMember.user))
         .addFields(
-          { name: "Utente", value: `${newM.user} \`(${newM.user.id})\`` },
-          { name: "Aggiunti", value: added.length ? added.map((id) => `<@&${id}>`).join(" ") : "—" },
-          { name: "Rimossi", value: removed.length ? removed.map((id) => `<@&${id}>`).join(" ") : "—" }
+          { name: "Utente", value: `${newMember.user} \n${userTag(newMember.user)}`, inline: false }
         );
 
       await sendLog(client, logCh.memberLog, { embeds: [e] });
     }
 
-    // timeout (communication disabled) -> mod-log
-    if (oldM.communicationDisabledUntilTimestamp !== newM.communicationDisabledUntilTimestamp) {
-      const until = newM.communicationDisabledUntilTimestamp
-        ? `<t:${Math.floor(newM.communicationDisabledUntilTimestamp / 1000)}:F> • <t:${Math.floor(newM.communicationDisabledUntilTimestamp / 1000)}:R>`
-        : "Rimosso";
-
-      const audit = await getLastAudit(newM.guild, AuditLogEvent.MemberUpdate, (e) => e.target?.id === newM.id);
-      const moderator = audit?.executor ? `${audit.executor} \`(${audit.executor.id})\`` : "—";
-      const reason = audit?.reason ? cut(audit.reason, 1024) : "—";
-
-      const e = baseEmbed("⏳ TIMEOUT / MUTE")
+    // Nickname change
+    if (oldMember.nickname !== newMember.nickname) {
+      const e = baseEmbed("✏️ NICKNAME CAMBIATO", 0xfee75c)
+        .setThumbnail(memberThumb(newMember))
+        .setImage(userAvatar(newMember.user))
         .addFields(
-          { name: "Utente", value: `${newM.user} \`(${newM.user.id})\`` },
-          { name: "Staff", value: moderator },
-          { name: "Fino a", value: until },
-          { name: "Motivo", value: reason }
+          { name: "Utente", value: `${newMember.user} \n${userTag(newMember.user)}`, inline: false },
+          { name: "Prima", value: cut(oldMember.nickname || "-"), inline: true },
+          { name: "Dopo", value: cut(newMember.nickname || "-"), inline: true }
         );
 
-      await sendLog(client, logCh.modLog, { embeds: [e] });
+      await sendLog(client, logCh.memberLog, { embeds: [e] });
+    }
+
+    // Roles added
+    const addedRoles = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id) && r.id !== newMember.guild.id);
+    if (addedRoles.size) {
+      const e = baseEmbed("➕ RUOLI AGGIUNTI", 0x57f287)
+        .setThumbnail(memberThumb(newMember))
+        .setImage(userAvatar(newMember.user))
+        .addFields(
+          { name: "Utente", value: `${newMember.user} \n${userTag(newMember.user)}`, inline: false },
+          { name: "Ruoli aggiunti", value: cut(addedRoles.map(r => `${r}`).join(", "), 1024), inline: false }
+        );
+
+      await sendLog(client, logCh.memberLog, { embeds: [e] });
+    }
+
+    // Roles removed
+    const removedRoles = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id) && r.id !== newMember.guild.id);
+    if (removedRoles.size) {
+      const e = baseEmbed("➖ RUOLI RIMOSSI", 0xed4245)
+        .setThumbnail(memberThumb(newMember))
+        .setImage(userAvatar(newMember.user))
+        .addFields(
+          { name: "Utente", value: `${newMember.user} \n${userTag(newMember.user)}`, inline: false },
+          { name: "Ruoli rimossi", value: cut(removedRoles.map(r => `${r}`).join(", "), 1024), inline: false }
+        );
+
+      await sendLog(client, logCh.memberLog, { embeds: [e] });
+    }
+
+    // Avatar change
+    if (oldMember.user.avatar !== newMember.user.avatar) {
+      const e = baseEmbed("🖼️ AVATAR CAMBIATO", 0x5865f2)
+        .setThumbnail(userAvatar(newMember.user))
+        .setImage(userAvatar(newMember.user))
+        .addFields(
+          { name: "Utente", value: `${newMember.user} \n${userTag(newMember.user)}`, inline: false }
+        );
+
+      await sendLog(client, logCh.memberLog, { embeds: [e] });
     }
   });
 
-  // ---------- MESSAGE DELETE/UPDATE (mess-log)
-  client.on("messageDelete", async (msg) => {
-    if (!msg.guild) return;
-    const author = msg.author ? `${msg.author} \`(${msg.author.id})\`` : "Sconosciuto (partial)";
-    const content = msg.content ? cut(msg.content, 3500) : "—";
-    const attachments = [...(msg.attachments?.values?.() ?? [])].map((a) => a.url);
+  // =========================
+  // MESSAGE LOGS
+  // =========================
 
-    const e = baseEmbed("🗑️ MESSAGGIO ELIMINATO")
+  client.on("messageDelete", async (message) => {
+    if (!message.guild || !message.author || message.author.bot) return;
+
+    const attachments = message.attachments?.size
+      ? message.attachments.map(a => a.url).join("\n")
+      : "-";
+
+    const e = baseEmbed("🗑️ MESSAGGIO ELIMINATO", 0xed4245)
+      .setThumbnail(userAvatar(message.author))
+      .setImage(userAvatar(message.author))
       .addFields(
-        { name: "Autore", value: author },
-        { name: "Canale", value: msg.channel ? `<#${msg.channel.id}>` : "—", inline: true },
-        { name: "Message ID", value: cut(msg.id), inline: true },
-        { name: "Contenuto", value: content }
+        { name: "Autore", value: `${message.author} \n${userTag(message.author)}`, inline: false },
+        { name: "Canale", value: `${message.channel}`, inline: true },
+        { name: "Messaggio ID", value: message.id, inline: true },
+        { name: "Contenuto", value: cut(message.content || "Nessun testo", 1024), inline: false },
+        { name: "Allegati", value: cut(attachments, 1024), inline: false }
       );
-
-    if (attachments.length) e.addFields({ name: "Allegati", value: cut(attachments.join("\n"), 1024) });
 
     await sendLog(client, logCh.messageLog, { embeds: [e] });
   });
 
-  client.on("messageUpdate", async (oldMsg, newMsg) => {
-    if (!newMsg.guild) return;
-    if (oldMsg.content === newMsg.content) return;
+  client.on("messageUpdate", async (oldMessage, newMessage) => {
+    if (!oldMessage.guild || !oldMessage.author || oldMessage.author.bot) return;
+    if (oldMessage.content === newMessage.content) return;
 
-    const author = newMsg.author ? `${newMsg.author} \`(${newMsg.author.id})\`` : "Sconosciuto (partial)";
-    const before = oldMsg.content ? cut(oldMsg.content, 1700) : "—";
-    const after = newMsg.content ? cut(newMsg.content, 1700) : "—";
-
-    const e = baseEmbed("✏️ MESSAGGIO MODIFICATO")
+    const e = baseEmbed("✏️ MESSAGGIO MODIFICATO", 0xfee75c)
+      .setThumbnail(userAvatar(oldMessage.author))
+      .setImage(userAvatar(oldMessage.author))
       .addFields(
-        { name: "Autore", value: author },
-        { name: "Canale", value: `<#${newMsg.channel.id}>`, inline: true },
-        { name: "Link", value: `[Vai al messaggio](https://discord.com/channels/${newMsg.guild.id}/${newMsg.channel.id}/${newMsg.id})`, inline: true },
-        { name: "Prima", value: before },
-        { name: "Dopo", value: after }
+        { name: "Autore", value: `${oldMessage.author} \n${userTag(oldMessage.author)}`, inline: false },
+        { name: "Canale", value: `${oldMessage.channel}`, inline: true },
+        { name: "Link", value: newMessage.url || "-", inline: true },
+        { name: "Prima", value: cut(oldMessage.content || "Nessun testo", 1024), inline: false },
+        { name: "Dopo", value: cut(newMessage.content || "Nessun testo", 1024), inline: false }
       );
 
     await sendLog(client, logCh.messageLog, { embeds: [e] });
   });
 
-  // ---------- VC LOGS (vc-logs)
-  client.on("voiceStateUpdate", async (oldS, newS) => {
-    if (!newS.guild) return;
-    const user = newS.member?.user || oldS.member?.user;
-    if (!user) return;
+  // =========================
+  // VOICE LOGS
+  // =========================
 
-    const uid = user.id;
-    const who = `${user} \`(${uid})\``;
+  client.on("voiceStateUpdate", async (oldState, newState) => {
+    const member = newState.member || oldState.member;
+    if (!member || member.user.bot) return;
 
-    // join/leave/move
-    if (oldS.channelId !== newS.channelId) {
-      const e = baseEmbed("🎙️ VOICE UPDATE")
+    // join
+    if (!oldState.channelId && newState.channelId) {
+      const e = baseEmbed("🔊 ENTRATO IN VOCALE", 0x57f287)
+        .setThumbnail(memberThumb(member))
+        .setImage(userAvatar(member.user))
         .addFields(
-          { name: "Utente", value: who },
-          { name: "Prima", value: oldS.channelId ? `<#${oldS.channelId}>` : "—", inline: true },
-          { name: "Dopo", value: newS.channelId ? `<#${newS.channelId}>` : "—", inline: true }
+          { name: "Utente", value: `${member.user} \n${userTag(member.user)}`, inline: false },
+          { name: "Canale", value: `${newState.channel}`, inline: true },
+          { name: "Mute", value: formatBool(newState.selfMute), inline: true },
+          { name: "Deaf", value: formatBool(newState.selfDeaf), inline: true },
+          { name: "Streaming", value: formatBool(newState.streaming), inline: true },
+          { name: "Video", value: formatBool(newState.selfVideo), inline: true }
         );
 
-      await sendLog(client, logCh.vcLog, { embeds: [e] });
-      return;
+      return await sendLog(client, logCh.vcLog, { embeds: [e] });
     }
 
-    // toggles (mute/deaf/stream/cam)
+    // leave
+    if (oldState.channelId && !newState.channelId) {
+      const e = baseEmbed("📤 USCITO DALLA VOCALE", 0xed4245)
+        .setThumbnail(memberThumb(member))
+        .setImage(userAvatar(member.user))
+        .addFields(
+          { name: "Utente", value: `${member.user} \n${userTag(member.user)}`, inline: false },
+          { name: "Canale", value: `${oldState.channel}`, inline: true }
+        );
+
+      return await sendLog(client, logCh.vcLog, { embeds: [e] });
+    }
+
+    // move
+    if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+      const e = baseEmbed("🔁 SPOSTATO TRA VOCALI", 0x5865f2)
+        .setThumbnail(memberThumb(member))
+        .setImage(userAvatar(member.user))
+        .addFields(
+          { name: "Utente", value: `${member.user} \n${userTag(member.user)}`, inline: false },
+          { name: "Da", value: `${oldState.channel}`, inline: true },
+          { name: "A", value: `${newState.channel}`, inline: true }
+        );
+
+      return await sendLog(client, logCh.vcLog, { embeds: [e] });
+    }
+
+    // mute/deaf/stream/video updates
     const changes = [];
-    if (oldS.selfMute !== newS.selfMute) changes.push(`selfMute: ${oldS.selfMute} → ${newS.selfMute}`);
-    if (oldS.selfDeaf !== newS.selfDeaf) changes.push(`selfDeaf: ${oldS.selfDeaf} → ${newS.selfDeaf}`);
-    if (oldS.streaming !== newS.streaming) changes.push(`streaming: ${oldS.streaming} → ${newS.streaming}`);
-    if (oldS.selfVideo !== newS.selfVideo) changes.push(`camera: ${oldS.selfVideo} → ${newS.selfVideo}`);
 
-    // server mute/deaf (moderation) -> prova audit log
-    const modChanges = [];
-    if (oldS.serverMute !== newS.serverMute) modChanges.push(`serverMute: ${oldS.serverMute} → ${newS.serverMute}`);
-    if (oldS.serverDeaf !== newS.serverDeaf) modChanges.push(`serverDeaf: ${oldS.serverDeaf} → ${newS.serverDeaf}`);
+    if (oldState.selfMute !== newState.selfMute) {
+      changes.push(`Self Mute: **${formatBool(oldState.selfMute)}** → **${formatBool(newState.selfMute)}**`);
+    }
+    if (oldState.selfDeaf !== newState.selfDeaf) {
+      changes.push(`Self Deaf: **${formatBool(oldState.selfDeaf)}** → **${formatBool(newState.selfDeaf)}**`);
+    }
+    if (oldState.serverMute !== newState.serverMute) {
+      changes.push(`Server Mute: **${formatBool(oldState.serverMute)}** → **${formatBool(newState.serverMute)}**`);
+    }
+    if (oldState.serverDeaf !== newState.serverDeaf) {
+      changes.push(`Server Deaf: **${formatBool(oldState.serverDeaf)}** → **${formatBool(newState.serverDeaf)}**`);
+    }
+    if (oldState.streaming !== newState.streaming) {
+      changes.push(`Streaming: **${formatBool(oldState.streaming)}** → **${formatBool(newState.streaming)}**`);
+    }
+    if (oldState.selfVideo !== newState.selfVideo) {
+      changes.push(`Video: **${formatBool(oldState.selfVideo)}** → **${formatBool(newState.selfVideo)}**`);
+    }
 
-    if (changes.length || modChanges.length) {
-      let moderator = "—";
-      let reason = "—";
-
-      if (modChanges.length) {
-        const audit = await getLastAudit(newS.guild, AuditLogEvent.MemberUpdate, (e) => e.target?.id === uid);
-        moderator = audit?.executor ? `${audit.executor} \`(${audit.executor.id})\`` : "—";
-        reason = audit?.reason ? cut(audit.reason, 1024) : "—";
-      }
-
-      const e = baseEmbed("🎛️ VC DETTAGLI")
+    if (changes.length) {
+      const e = baseEmbed("⚙️ STATO VOCALE CAMBIATO", 0xfee75c)
+        .setThumbnail(memberThumb(member))
+        .setImage(userAvatar(member.user))
         .addFields(
-          { name: "Utente", value: who },
-          { name: "Canale", value: newS.channelId ? `<#${newS.channelId}>` : "—", inline: true },
-          { name: "User changes", value: changes.length ? cut(changes.join("\n"), 1024) : "—" },
-          { name: "Mod changes", value: modChanges.length ? cut(modChanges.join("\n"), 1024) : "—" },
-          { name: "Staff (se mod)", value: moderator },
-          { name: "Motivo (se mod)", value: reason }
+          { name: "Utente", value: `${member.user} \n${userTag(member.user)}`, inline: false },
+          { name: "Canale", value: `${newState.channel || oldState.channel || "-"}`, inline: false },
+          { name: "Modifiche", value: cut(changes.join("\n"), 1024), inline: false }
         );
 
-      await sendLog(client, logCh.vcLog, { embeds: [e] });
+      return await sendLog(client, logCh.vcLog, { embeds: [e] });
     }
   });
 
-  // ---------- MOD LOGS (ban/kick) via audit logs
-  client.on("guildBanAdd", async (ban) => {
-    const audit = await getLastAudit(ban.guild, AuditLogEvent.MemberBanAdd, (e) => e.target?.id === ban.user.id);
-    const moderator = audit?.executor ? `${audit.executor} \`(${audit.executor.id})\`` : "—";
-    const reason = audit?.reason ? cut(audit.reason, 1024) : "—";
+  // =========================
+  // MOD LOGS
+  // =========================
 
-    const e = baseEmbed("⛔ BAN")
-      .setThumbnail(ban.user.displayAvatarURL({ size: 256 }))
+  client.on("guildBanAdd", async (ban) => {
+    const audit = await getLastAudit(
+      ban.guild,
+      AuditLogEvent.MemberBanAdd,
+      (e) => e.target?.id === ban.user.id
+    );
+
+    const e = baseEmbed("🔨 UTENTE BANNATO", 0x8b0000)
+      .setThumbnail(userAvatar(ban.user))
+      .setImage(userAvatar(ban.user))
       .addFields(
-        { name: "Utente", value: `${ban.user} \`(${ban.user.id})\`` },
-        { name: "Staff", value: moderator },
-        { name: "Motivo", value: reason }
+        { name: "Utente", value: `${ban.user} \n${userTag(ban.user)}`, inline: false },
+        { name: "Moderatore", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false },
+        { name: "Motivo", value: cut(audit?.reason || "Nessun motivo"), inline: false }
       );
 
     await sendLog(client, logCh.modLog, { embeds: [e] });
   });
 
   client.on("guildBanRemove", async (ban) => {
-    const audit = await getLastAudit(ban.guild, AuditLogEvent.MemberBanRemove, (e) => e.target?.id === ban.user.id);
-    const moderator = audit?.executor ? `${audit.executor} \`(${audit.executor.id})\`` : "—";
-    const reason = audit?.reason ? cut(audit.reason, 1024) : "—";
+    const audit = await getLastAudit(
+      ban.guild,
+      AuditLogEvent.MemberBanRemove,
+      (e) => e.target?.id === ban.user.id
+    );
 
-    const e = baseEmbed("✅ UNBAN")
-      .setThumbnail(ban.user.displayAvatarURL({ size: 256 }))
+    const e = baseEmbed("🔓 UTENTE SBANNATO", 0x57f287)
+      .setThumbnail(userAvatar(ban.user))
+      .setImage(userAvatar(ban.user))
       .addFields(
-        { name: "Utente", value: `${ban.user} \`(${ban.user.id})\`` },
-        { name: "Staff", value: moderator },
-        { name: "Motivo", value: reason }
+        { name: "Utente", value: `${ban.user} \n${userTag(ban.user)}`, inline: false },
+        { name: "Moderatore", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false },
+        { name: "Motivo", value: cut(audit?.reason || "Nessun motivo"), inline: false }
       );
 
     await sendLog(client, logCh.modLog, { embeds: [e] });
   });
 
-  // ---------- SERVER LOGS (ruoli/canali/webhooks ecc) - “tutto in generale”
-  client.on("channelCreate", async (ch) => {
-    if (!ch.guild) return;
-    const audit = await getLastAudit(ch.guild, AuditLogEvent.ChannelCreate, (e) => e.target?.id === ch.id);
-    const moderator = audit?.executor ? `${audit.executor} \`(${audit.executor.id})\`` : "—";
-    const reason = audit?.reason ? cut(audit.reason, 1024) : "—";
+  // timeout / untimeout / kick
+  client.on("guildMemberUpdate", async (oldMember, newMember) => {
+    if (oldMember.communicationDisabledUntilTimestamp !== newMember.communicationDisabledUntilTimestamp) {
+      const isTimedOut = !!newMember.communicationDisabledUntilTimestamp;
 
-    const e = baseEmbed("📁 CANALE CREATO")
+      const audit = await getLastAudit(
+        newMember.guild,
+        AuditLogEvent.MemberUpdate,
+        (entry) => entry.target?.id === newMember.id
+      );
+
+      const e = baseEmbed(isTimedOut ? "⏳ TIMEOUT APPLICATO" : "✅ TIMEOUT RIMOSSO", isTimedOut ? 0xffa500 : 0x57f287)
+        .setThumbnail(memberThumb(newMember))
+        .setImage(userAvatar(newMember.user))
+        .addFields(
+          { name: "Utente", value: `${newMember.user} \n${userTag(newMember.user)}`, inline: false },
+          { name: "Moderatore", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false },
+          { name: "Scadenza", value: isTimedOut ? formatDate(newMember.communicationDisabledUntilTimestamp) : "-", inline: true },
+          { name: "Motivo", value: cut(audit?.reason || "Nessun motivo"), inline: false }
+        );
+
+      await sendLog(client, logCh.modLog, { embeds: [e] });
+    }
+  });
+
+  client.on("guildMemberRemove", async (member) => {
+    const audit = await getLastAudit(
+      member.guild,
+      AuditLogEvent.MemberKick,
+      (entry) => entry.target?.id === member.id
+    );
+
+    if (!audit) return;
+
+    const now = Date.now();
+    const created = audit.createdTimestamp || 0;
+    if (now - created > 5000) return;
+
+    const e = baseEmbed("👢 UTENTE KICKATO", 0xffa500)
+      .setThumbnail(memberThumb(member))
+      .setImage(userAvatar(member.user))
       .addFields(
-        { name: "Canale", value: `<#${ch.id}> \`(${ch.id})\`` },
-        { name: "Tipo", value: String(ch.type), inline: true },
-        { name: "Staff", value: moderator, inline: false },
-        { name: "Motivo", value: reason }
+        { name: "Utente", value: `${member.user?.tag || "-"} (${member.id})`, inline: false },
+        { name: "Moderatore", value: audit.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false },
+        { name: "Motivo", value: cut(audit.reason || "Nessun motivo"), inline: false }
+      );
+
+    await sendLog(client, logCh.modLog, { embeds: [e] });
+  });
+
+  // =========================
+  // INVITE LOGS
+  // =========================
+
+  client.on("inviteCreate", async (invite) => {
+    const e = baseEmbed("🔗 INVITO CREATO", 0x57f287)
+      .addFields(
+        { name: "Codice", value: cut(invite.code), inline: true },
+        { name: "Canale", value: invite.channel ? `${invite.channel}` : "-", inline: true },
+        { name: "Creato da", value: invite.inviter ? `${invite.inviter} \n${userTag(invite.inviter)}` : "-", inline: false },
+        { name: "Max usi", value: String(invite.maxUses ?? "-"), inline: true },
+        { name: "Scade", value: invite.expiresAt ? `<t:${Math.floor(invite.expiresAt.getTime() / 1000)}:R>` : "Mai", inline: true },
+        { name: "Temporary", value: formatBool(invite.temporary ?? false), inline: true }
+      );
+
+    if (invite.inviter) {
+      e.setThumbnail(userAvatar(invite.inviter)).setImage(userAvatar(invite.inviter));
+    }
+
+    await sendLog(client, logCh.inviteLog, { embeds: [e] });
+  });
+
+  client.on("inviteDelete", async (invite) => {
+    const e = baseEmbed("🗑️ INVITO ELIMINATO", 0xed4245)
+      .addFields(
+        { name: "Codice", value: cut(invite.code), inline: true },
+        { name: "Canale", value: invite.channel ? `${invite.channel}` : "-", inline: true }
+      );
+
+    await sendLog(client, logCh.inviteLog, { embeds: [e] });
+  });
+
+  // =========================
+  // SERVER LOGS
+  // =========================
+
+  client.on("channelCreate", async (channel) => {
+    const audit = await getLastAudit(
+      channel.guild,
+      AuditLogEvent.ChannelCreate,
+      (e) => e.target?.id === channel.id
+    );
+
+    const e = baseEmbed("📁 CANALE CREATO", 0x57f287)
+      .addFields(
+        { name: "Canale", value: `${channel} (${channel.name})`, inline: false },
+        { name: "ID", value: channel.id, inline: true },
+        { name: "Tipo", value: String(channel.type), inline: true },
+        { name: "Creato da", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false }
       );
 
     await sendLog(client, logCh.serverLog, { embeds: [e] });
   });
 
-  client.on("channelDelete", async (ch) => {
-    if (!ch.guild) return;
-    const audit = await getLastAudit(ch.guild, AuditLogEvent.ChannelDelete, (e) => e.target?.id === ch.id);
-    const moderator = audit?.executor ? `${audit.executor} \`(${audit.executor.id})\`` : "—";
-    const reason = audit?.reason ? cut(audit.reason, 1024) : "—";
+  client.on("channelDelete", async (channel) => {
+    const audit = await getLastAudit(
+      channel.guild,
+      AuditLogEvent.ChannelDelete,
+      (e) => e.target?.id === channel.id
+    );
 
-    const e = baseEmbed("🗑️ CANALE ELIMINATO")
+    const e = baseEmbed("🗑️ CANALE ELIMINATO", 0xed4245)
       .addFields(
-        { name: "Nome", value: cut(ch.name), inline: true },
-        { name: "ID", value: cut(ch.id), inline: true },
-        { name: "Tipo", value: String(ch.type), inline: true },
-        { name: "Staff", value: moderator },
-        { name: "Motivo", value: reason }
+        { name: "Nome", value: channel.name || "-", inline: true },
+        { name: "ID", value: channel.id, inline: true },
+        { name: "Tipo", value: String(channel.type), inline: true },
+        { name: "Eliminato da", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false }
+      );
+
+    await sendLog(client, logCh.serverLog, { embeds: [e] });
+  });
+
+  client.on("channelUpdate", async (oldChannel, newChannel) => {
+    const changes = [];
+
+    if (oldChannel.name !== newChannel.name) {
+      changes.push(`Nome: **${oldChannel.name}** → **${newChannel.name}**`);
+    }
+
+    if ("topic" in oldChannel && oldChannel.topic !== newChannel.topic) {
+      changes.push(`Topic:\n**Prima:** ${cut(oldChannel.topic || "-", 300)}\n**Dopo:** ${cut(newChannel.topic || "-", 300)}`);
+    }
+
+    if ("nsfw" in oldChannel && oldChannel.nsfw !== newChannel.nsfw) {
+      changes.push(`NSFW: **${formatBool(oldChannel.nsfw)}** → **${formatBool(newChannel.nsfw)}**`);
+    }
+
+    if ("rateLimitPerUser" in oldChannel && oldChannel.rateLimitPerUser !== newChannel.rateLimitPerUser) {
+      changes.push(`Slowmode: **${oldChannel.rateLimitPerUser || 0}s** → **${newChannel.rateLimitPerUser || 0}s**`);
+    }
+
+    if (!changes.length) return;
+
+    const audit = await getLastAudit(
+      newChannel.guild,
+      AuditLogEvent.ChannelUpdate,
+      (e) => e.target?.id === newChannel.id
+    );
+
+    const e = baseEmbed("⚙️ CANALE MODIFICATO", 0xfee75c)
+      .addFields(
+        { name: "Canale", value: `${newChannel}`, inline: false },
+        { name: "Modificato da", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false },
+        { name: "Modifiche", value: cut(changes.join("\n\n"), 1024), inline: false }
       );
 
     await sendLog(client, logCh.serverLog, { embeds: [e] });
   });
 
   client.on("roleCreate", async (role) => {
-    const audit = await getLastAudit(role.guild, AuditLogEvent.RoleCreate, (e) => e.target?.id === role.id);
-    const moderator = audit?.executor ? `${audit.executor} \`(${audit.executor.id})\`` : "—";
-    const e = baseEmbed("🧩 RUOLO CREATO")
+    const audit = await getLastAudit(
+      role.guild,
+      AuditLogEvent.RoleCreate,
+      (e) => e.target?.id === role.id
+    );
+
+    const e = baseEmbed("🎭 RUOLO CREATO", 0x57f287)
       .addFields(
-        { name: "Ruolo", value: `<@&${role.id}> \`(${role.id})\`` },
-        { name: "Staff", value: moderator }
+        { name: "Ruolo", value: `${role} (${role.name})`, inline: false },
+        { name: "ID", value: role.id, inline: true },
+        { name: "Colore", value: role.hexColor || "-", inline: true },
+        { name: "Creato da", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false },
+        { name: "Permessi", value: formatPerms(role.permissions), inline: false }
       );
+
     await sendLog(client, logCh.serverLog, { embeds: [e] });
   });
 
   client.on("roleDelete", async (role) => {
-    const audit = await getLastAudit(role.guild, AuditLogEvent.RoleDelete, (e) => e.target?.id === role.id);
-    const moderator = audit?.executor ? `${audit.executor} \`(${audit.executor.id})\`` : "—";
-    const e = baseEmbed("🗑️ RUOLO ELIMINATO")
+    const audit = await getLastAudit(
+      role.guild,
+      AuditLogEvent.RoleDelete,
+      (e) => e.target?.id === role.id
+    );
+
+    const e = baseEmbed("🗑️ RUOLO ELIMINATO", 0xed4245)
       .addFields(
-        { name: "Nome", value: cut(role.name), inline: true },
-        { name: "ID", value: cut(role.id), inline: true },
-        { name: "Staff", value: moderator }
+        { name: "Nome", value: role.name || "-", inline: true },
+        { name: "ID", value: role.id, inline: true },
+        { name: "Eliminato da", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false }
       );
+
     await sendLog(client, logCh.serverLog, { embeds: [e] });
   });
 
-  // ---------- “POTERI”: logga OGNI comando slash usato (mod-log)
-  // (Questo ti logga chi ha usato cosa e con quali opzioni.)
-  client.on("interactionCreate", async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    if (!interaction.guild) return;
+  client.on("roleUpdate", async (oldRole, newRole) => {
+    const changes = [];
 
-    const opts = interaction.options?.data?.map((o) => {
-      const v = o.value ?? (o.user ? `${o.user.tag} (${o.user.id})` : o.role ? `${o.role.name} (${o.role.id})` : o.channel ? `${o.channel.name} (${o.channel.id})` : "—");
-      return `• **${o.name}**: ${cut(v, 200)}`;
-    }) ?? [];
+    if (oldRole.name !== newRole.name) {
+      changes.push(`Nome: **${oldRole.name}** → **${newRole.name}**`);
+    }
+    if (oldRole.hexColor !== newRole.hexColor) {
+      changes.push(`Colore: **${oldRole.hexColor}** → **${newRole.hexColor}**`);
+    }
+    if (oldRole.hoist !== newRole.hoist) {
+      changes.push(`Mostrato separatamente: **${formatBool(oldRole.hoist)}** → **${formatBool(newRole.hoist)}**`);
+    }
+    if (oldRole.mentionable !== newRole.mentionable) {
+      changes.push(`Menzionabile: **${formatBool(oldRole.mentionable)}** → **${formatBool(newRole.mentionable)}**`);
+    }
 
-    const e = baseEmbed("⚡ POTERE USATO (COMANDO)")
+    if (!changes.length) return;
+
+    const audit = await getLastAudit(
+      newRole.guild,
+      AuditLogEvent.RoleUpdate,
+      (e) => e.target?.id === newRole.id
+    );
+
+    const e = baseEmbed("⚙️ RUOLO MODIFICATO", 0xfee75c)
       .addFields(
-        { name: "Comando", value: `\`/${interaction.commandName}\`` },
-        { name: "Staff", value: `${interaction.user} \`(${interaction.user.id})\`` },
-        { name: "Canale", value: interaction.channelId ? `<#${interaction.channelId}>` : "—", inline: true },
-        { name: "Dettagli", value: opts.length ? cut(opts.join("\n"), 1024) : "Nessuna opzione" }
+        { name: "Ruolo", value: `${newRole} (${newRole.name})`, inline: false },
+        { name: "Modificato da", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false },
+        { name: "Modifiche", value: cut(changes.join("\n"), 1024), inline: false }
       );
 
-    await sendLog(client, logCh.modLog, { embeds: [e] });
+    await sendLog(client, logCh.serverLog, { embeds: [e] });
+  });
+
+  client.on("guildUpdate", async (oldGuild, newGuild) => {
+    const changes = [];
+
+    if (oldGuild.name !== newGuild.name) {
+      changes.push(`Nome: **${oldGuild.name}** → **${newGuild.name}**`);
+    }
+    if (oldGuild.icon !== newGuild.icon) {
+      changes.push(`Icona server cambiata`);
+    }
+    if (oldGuild.banner !== newGuild.banner) {
+      changes.push(`Banner server cambiato`);
+    }
+    if (oldGuild.verificationLevel !== newGuild.verificationLevel) {
+      changes.push(`Livello verifica: **${oldGuild.verificationLevel}** → **${newGuild.verificationLevel}**`);
+    }
+
+    if (!changes.length) return;
+
+    const audit = await getLastAudit(
+      newGuild,
+      AuditLogEvent.GuildUpdate
+    );
+
+    const e = baseEmbed("🛠️ SERVER MODIFICATO", 0x5865f2)
+      .setThumbnail(newGuild.iconURL({ dynamic: true, size: 1024 }))
+      .setImage(newGuild.bannerURL({ size: 1024 }) || newGuild.iconURL({ dynamic: true, size: 1024 }) || null)
+      .addFields(
+        { name: "Server", value: `${newGuild.name} (${newGuild.id})`, inline: false },
+        { name: "Modificato da", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false },
+        { name: "Modifiche", value: cut(changes.join("\n"), 1024), inline: false }
+      );
+
+    await sendLog(client, logCh.serverLog, { embeds: [e] });
+  });
+
+  client.on("emojiCreate", async (emoji) => {
+    const audit = await getLastAudit(
+      emoji.guild,
+      AuditLogEvent.EmojiCreate
+    );
+
+    const e = baseEmbed("😀 EMOJI CREATA", 0x57f287)
+      .setThumbnail(emoji.imageURL())
+      .setImage(emoji.imageURL())
+      .addFields(
+        { name: "Emoji", value: `${emoji}`, inline: true },
+        { name: "Nome", value: emoji.name || "-", inline: true },
+        { name: "Creata da", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false }
+      );
+
+    await sendLog(client, logCh.serverLog, { embeds: [e] });
+  });
+
+  client.on("emojiDelete", async (emoji) => {
+    const audit = await getLastAudit(
+      emoji.guild,
+      AuditLogEvent.EmojiDelete
+    );
+
+    const e = baseEmbed("🗑️ EMOJI ELIMINATA", 0xed4245)
+      .addFields(
+        { name: "Nome", value: emoji.name || "-", inline: true },
+        { name: "ID", value: emoji.id || "-", inline: true },
+        { name: "Eliminata da", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false }
+      );
+
+    await sendLog(client, logCh.serverLog, { embeds: [e] });
+  });
+
+  client.on("emojiUpdate", async (oldEmoji, newEmoji) => {
+    if (oldEmoji.name === newEmoji.name) return;
+
+    const audit = await getLastAudit(
+      newEmoji.guild,
+      AuditLogEvent.EmojiUpdate
+    );
+
+    const e = baseEmbed("⚙️ EMOJI MODIFICATA", 0xfee75c)
+      .setThumbnail(newEmoji.imageURL())
+      .setImage(newEmoji.imageURL())
+      .addFields(
+        { name: "Prima", value: oldEmoji.name || "-", inline: true },
+        { name: "Dopo", value: newEmoji.name || "-", inline: true },
+        { name: "Modificata da", value: audit?.executor ? `${audit.executor} \n${userTag(audit.executor)}` : "-", inline: false }
+      );
+
+    await sendLog(client, logCh.serverLog, { embeds: [e] });
   });
 };
