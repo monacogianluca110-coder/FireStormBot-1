@@ -23,6 +23,7 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildModeration,
     GatewayIntentBits.GuildInvites,
+    GatewayIntentBits.GuildExpressions, // emoji + sticker
   ],
   partials: [
     Partials.Message,
@@ -74,11 +75,16 @@ if (fs.existsSync(commandsRoot)) {
       const file = fs.readdirSync(commandPath).find((f) => f.endsWith(".js"));
       if (!file) continue;
 
-      const command = require(path.join(commandPath, file));
-      if (!command?.name || typeof command.execute !== "function") continue;
+      try {
+        const command = require(path.join(commandPath, file));
+        if (!command?.name || typeof command.execute !== "function") continue;
 
-      client.commands.set(command.name.toLowerCase(), command);
-      loaded++;
+        client.commands.set(command.name.toLowerCase(), command);
+        loaded++;
+      } catch (err) {
+        console.error(`❌ Errore caricando comando ${category}/${commandFolder}/${file}`);
+        console.error(err);
+      }
     }
   }
 }
@@ -86,18 +92,29 @@ if (fs.existsSync(commandsRoot)) {
 console.log(`✅ Caricati ${loaded} comandi`);
 
 // ─────────────────────────────
-// LOAD LOGS SYSTEM (logs/)
+// LOAD LOGS SYSTEM (logs/*.js)
 // ─────────────────────────────
-try {
-  require("./logs")(client);
-  console.log("✅ Logs system caricato");
-} catch (err) {
-  console.error("❌ Errore caricando logs system");
-  console.error(err);
+const logsPath = path.join(__dirname, "logs");
+
+if (fs.existsSync(logsPath)) {
+  const logFiles = fs.readdirSync(logsPath).filter((f) => f.endsWith(".js"));
+  console.log("📚 Logs trovati:", logFiles.length ? logFiles.join(", ") : "nessuno");
+
+  for (const file of logFiles) {
+    try {
+      require(path.join(logsPath, file))(client);
+      console.log("✅ Log caricato:", file);
+    } catch (err) {
+      console.error("❌ Errore caricando log:", file);
+      console.error(err);
+    }
+  }
+} else {
+  console.log("⚠️ Cartella logs/ non trovata");
 }
 
 // ─────────────────────────────
-// READY (+ TEST LOG WRITE)
+// READY
 // ─────────────────────────────
 client.once(Events.ClientReady, async () => {
   console.log(`🔥 FireStorm online come ${client.user.tag}`);
@@ -106,12 +123,14 @@ client.once(Events.ClientReady, async () => {
     type: ActivityType.Watching,
   });
 
-  // ✅ TEST: scrittura nel canale server-log
-  const TEST_CH = "1455214028170334278"; // server-log
+  // Test scrittura
+  const TEST_CH = "1455214028170334278";
   try {
     const ch = await client.channels.fetch(TEST_CH);
-    await ch.send("✅ TEST: posso scrivere nei logs (server-log).");
-    console.log("✅ Test scrittura log OK");
+    if (ch) {
+      await ch.send("✅ TEST: posso scrivere nei logs (server-log).");
+      console.log("✅ Test scrittura log OK");
+    }
   } catch (e) {
     console.error("❌ Test scrittura log FALLITO:", e?.message || e);
   }
@@ -136,9 +155,30 @@ client.on(Events.MessageCreate, async (message) => {
 
   try {
     await command.execute(message, args);
+
+    // utile per logs/commands.js se vuoi segnare anche il successo
+    client.emit("commandSuccess", {
+      interaction: null,
+      message,
+      commandName,
+      args,
+      type: "prefix",
+    });
   } catch (err) {
     console.error("❌ Errore comando:", err);
-    message.channel.send("❌ Errore durante il comando.");
+
+    client.emit("commandError", {
+      interaction: null,
+      message,
+      commandName,
+      args,
+      type: "prefix",
+      error: err,
+    });
+
+    try {
+      await message.channel.send("❌ Errore durante il comando.");
+    } catch {}
   }
 });
 
