@@ -33,21 +33,17 @@ const client = new Client({
   ],
 });
 
-// prefix opzionale per comandi normali
 client.prefix = "!";
-
-// collezioni comandi
-client.commands = new Map();       // comandi normali
-client.slashCommands = new Map();  // slash commands
+client.commands = new Map();
+client.slashCommands = new Map();
 
 // ─────────────────────────────
 // LOAD COMMANDS (commands/)
 // supporta:
+// - module.exports = { name, execute }
+// - module.exports = { data, execute }
+// struttura:
 // commands/categoria/comando/file.js
-// sia con:
-// module.exports = { name, execute }
-// sia con:
-// module.exports = { data, execute }
 // ─────────────────────────────
 const commandsRoot = path.join(__dirname, "commands");
 
@@ -69,19 +65,19 @@ if (fs.existsSync(commandsRoot)) {
       try {
         const command = require(path.join(commandPath, file));
 
-        // SLASH COMMAND
+        // Prefix command
+        if (command?.name && typeof command.execute === "function") {
+          client.commands.set(command.name.toLowerCase(), command);
+          loadedPrefix++;
+        }
+
+        // Slash command
         if (command?.data && typeof command.execute === "function") {
           const slashName = command.data?.name;
           if (slashName) {
             client.slashCommands.set(slashName.toLowerCase(), command);
             loadedSlash++;
           }
-        }
-
-        // PREFIX / NORMAL COMMAND
-        if (command?.name && typeof command.execute === "function") {
-          client.commands.set(command.name.toLowerCase(), command);
-          loadedPrefix++;
         }
       } catch (err) {
         console.error(`❌ Errore caricando comando ${category}/${commandFolder}/${file}`);
@@ -96,8 +92,9 @@ console.log(`✅ Caricati ${loadedSlash} slash commands`);
 
 // ─────────────────────────────
 // LOAD EVENTS (events/)
-// supporta:
+// ogni file deve esportare:
 // module.exports = { name, execute }
+// oppure:
 // module.exports = { name, once: true, execute }
 // ─────────────────────────────
 const eventsPath = path.join(__dirname, "events");
@@ -121,9 +118,9 @@ if (fs.existsSync(eventsPath)) {
         client.on(event.name, (...args) => event.execute(...args, client));
       }
 
-      console.log("✅ Evento caricato:", file);
+      console.log(`✅ Evento caricato: ${file}`);
     } catch (err) {
-      console.error("❌ Errore evento:", file);
+      console.error(`❌ Errore evento: ${file}`);
       console.error(err);
     }
   }
@@ -133,7 +130,8 @@ if (fs.existsSync(eventsPath)) {
 
 // ─────────────────────────────
 // LOAD LOGS SYSTEM (logs/*.js)
-// ogni file deve esportare una funzione: module.exports = (client) => {}
+// ogni file deve esportare:
+// module.exports = (client) => {}
 // ─────────────────────────────
 const logsPath = path.join(__dirname, "logs");
 
@@ -143,73 +141,23 @@ if (fs.existsSync(logsPath)) {
 
   for (const file of logFiles) {
     try {
-      require(path.join(logsPath, file))(client);
-      console.log("✅ Log caricato:", file);
+      const logModule = require(path.join(logsPath, file));
+
+      if (typeof logModule !== "function") {
+        console.log(`❌ Log non valido: ${file}`);
+        continue;
+      }
+
+      logModule(client);
+      console.log(`✅ Log caricato: ${file}`);
     } catch (err) {
-      console.error("❌ Errore caricando log:", file);
+      console.error(`❌ Errore caricando log: ${file}`);
       console.error(err);
     }
   }
 } else {
   console.log("⚠️ Cartella logs/ non trovata");
 }
-
-// ─────────────────────────────
-// HANDLER COMANDI NORMALI (!comando)
-// ─────────────────────────────
-client.on(Events.MessageCreate, async (message) => {
-  try {
-    if (!message.guild) return;
-    if (message.author.bot) return;
-    if (!message.content.startsWith(client.prefix)) return;
-
-    const args = message.content.slice(client.prefix.length).trim().split(/\s+/);
-    const commandName = args.shift()?.toLowerCase();
-    if (!commandName) return;
-
-    const command = client.commands.get(commandName);
-    if (!command) return;
-
-    await command.execute(message, args, client);
-  } catch (err) {
-    console.error("❌ Errore comando normale:", err);
-
-    try {
-      await message.reply("❌ Errore durante l'esecuzione del comando.");
-    } catch {}
-  }
-});
-
-// ─────────────────────────────
-// HANDLER SLASH COMMANDS
-// lascia liberi bottoni/select menu agli eventi custom tipo ticketSystem.js
-// ─────────────────────────────
-client.on(Events.InteractionCreate, async (interaction) => {
-  try {
-    if (!interaction.isChatInputCommand()) return;
-
-    const command = client.slashCommands.get(interaction.commandName.toLowerCase());
-    if (!command) return;
-
-    await command.execute(interaction, client);
-  } catch (err) {
-    console.error("❌ Errore slash command:", err);
-
-    try {
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({
-          content: "❌ Errore durante l'esecuzione del comando.",
-          ephemeral: true,
-        });
-      } else {
-        await interaction.reply({
-          content: "❌ Errore durante l'esecuzione del comando.",
-          ephemeral: true,
-        });
-      }
-    } catch {}
-  }
-});
 
 // ─────────────────────────────
 // READY
@@ -225,6 +173,7 @@ client.once(Events.ClientReady, async () => {
 
   try {
     const ch = await client.channels.fetch(TEST_CH).catch(() => null);
+
     if (ch) {
       await ch.send("✅ TEST: posso scrivere nei logs (server-log).");
       console.log("✅ Test scrittura log OK");
@@ -237,7 +186,7 @@ client.once(Events.ClientReady, async () => {
 });
 
 // ─────────────────────────────
-// SAFETY (Railway / VPS)
+// SAFETY
 // ─────────────────────────────
 process.on("unhandledRejection", (err) => {
   console.error("UNHANDLED REJECTION:", err);
