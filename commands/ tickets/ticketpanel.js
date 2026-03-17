@@ -7,7 +7,7 @@ const {
   ButtonStyle
 } = require("discord.js");
 
-const { PANEL_CHANNEL_ID, TYPES } = require("../../../config/tickets");
+const { PANEL_CHANNEL_ID, TYPES } = require("../../config/tickets");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -31,36 +31,41 @@ module.exports = {
       .setTitle("🎫 Sistema Ticket")
       .setDescription(
         [
-          "Benvenuto nel centro assistenza del server.",
+          "Benvenuto nel **centro assistenza** del server.",
           "",
           "Seleziona qui sotto il tipo di ticket che desideri aprire.",
+          "Ogni richiesta verrà gestita dal nostro staff il prima possibile.",
           "",
-          "🔵 Supporto",
-          "🟡 Partnership",
-          "🔴 Segnalazione"
+          `🔵 **${TYPES.supporto.label}**`,
+          `🟡 **${TYPES.partnership.label}**`,
+          `🔴 **${TYPES.segnalazione.label}**`
         ].join("\n")
       )
       .setColor(0x2b2d31)
       .setThumbnail(guildIcon)
+      .setFooter({
+        text: `${interaction.guild.name} • Ticket Center`,
+        iconURL: guildIcon || undefined
+      })
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("ticket_open_supporto")
-        .setLabel("Supporto")
-        .setEmoji("🔵")
+        .setLabel(TYPES.supporto.label)
+        .setEmoji(TYPES.supporto.emoji)
         .setStyle(ButtonStyle.Primary),
 
       new ButtonBuilder()
         .setCustomId("ticket_open_partnership")
-        .setLabel("Partnership")
-        .setEmoji("🟡")
+        .setLabel(TYPES.partnership.label)
+        .setEmoji(TYPES.partnership.emoji)
         .setStyle(ButtonStyle.Secondary),
 
       new ButtonBuilder()
         .setCustomId("ticket_open_segnalazione")
-        .setLabel("Segnalazione")
-        .setEmoji("🔴")
+        .setLabel(TYPES.segnalazione.label)
+        .setEmoji(TYPES.segnalazione.emoji)
         .setStyle(ButtonStyle.Danger)
     );
 
