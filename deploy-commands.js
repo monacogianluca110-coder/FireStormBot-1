@@ -1,66 +1,44 @@
 require("dotenv").config();
 
-const { REST, Routes } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
+const { REST, Routes } = require("discord.js");
 
 const commands = [];
-const commandsRoot = path.join(__dirname, "commands");
+const commandsPath = path.join(__dirname, "commands");
 
-function loadCommandsFromTree(rootDir) {
-  if (!fs.existsSync(rootDir)) return;
-
-  for (const entry of fs.readdirSync(rootDir)) {
-    const fullPath = path.join(rootDir, entry);
-    const stat = fs.statSync(fullPath);
+function scanCommands(dirPath) {
+  for (const entry of fs.readdirSync(dirPath)) {
+    const entryPath = path.join(dirPath, entry);
+    const stat = fs.statSync(entryPath);
 
     if (stat.isDirectory()) {
-      loadCommandsFromTree(fullPath);
-      continue;
-    }
-
-    if (!entry.endsWith(".js")) continue;
-
-    try {
-      const command = require(fullPath);
-
-      if (command?.data && typeof command.data.toJSON === "function") {
+      scanCommands(entryPath);
+    } else if (entry.endsWith(".js")) {
+      const command = require(entryPath);
+      if (command?.data) {
         commands.push(command.data.toJSON());
-        console.log(`✅ Slash trovato: ${fullPath}`);
       }
-    } catch (err) {
-      console.error(`❌ Errore caricando ${fullPath}`);
-      console.error(err);
     }
   }
 }
 
-loadCommandsFromTree(commandsRoot);
-
-if (!process.env.TOKEN) {
-  console.error("❌ TOKEN mancante nelle variabili ambiente.");
-  process.exit(1);
-}
-
-if (!process.env.CLIENT_ID) {
-  console.error("❌ CLIENT_ID mancante nelle variabili ambiente.");
-  process.exit(1);
-}
+scanCommands(commandsPath);
 
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
 (async () => {
   try {
-    console.log(`🚀 Deploy di ${commands.length} comandi slash...`);
+    console.log(`🔄 Registro ${commands.length} slash command...`);
 
     await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
+      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
       { body: commands }
     );
 
-    console.log("✅ Comandi slash deployati con successo.");
+    console.log("✅ Slash command registrati con successo.");
   } catch (error) {
-    console.error("❌ Errore durante il deploy dei comandi:");
+    console.error("❌ Errore nel deploy dei comandi:");
     console.error(error);
   }
 })();
