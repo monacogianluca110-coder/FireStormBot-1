@@ -38,50 +38,53 @@ client.commands = new Map();
 client.slashCommands = new Map();
 
 // ─────────────────────────────
-// LOAD COMMANDS (commands/)
+// LOAD COMMANDS
 // supporta:
-// - module.exports = { name, execute }
-// - module.exports = { data, execute }
-// struttura:
-// commands/categoria/comando/file.js
+// commands/categoria/file.js
+// commands/categoria/sottocartella/file.js
 // ─────────────────────────────
 const commandsRoot = path.join(__dirname, "commands");
 
 let loadedPrefix = 0;
 let loadedSlash = 0;
 
+function loadCommandFile(filePath) {
+  try {
+    const command = require(filePath);
+
+    if (command?.name && typeof command.execute === "function") {
+      client.commands.set(command.name.toLowerCase(), command);
+      loadedPrefix++;
+    }
+
+    if (command?.data && typeof command.execute === "function") {
+      const slashName = command.data?.name;
+      if (slashName) {
+        client.slashCommands.set(slashName.toLowerCase(), command);
+        loadedSlash++;
+      }
+    }
+  } catch (err) {
+    console.error(`❌ Errore caricando comando: ${filePath}`);
+    console.error(err);
+  }
+}
+
 if (fs.existsSync(commandsRoot)) {
-  for (const category of fs.readdirSync(commandsRoot)) {
-    const categoryPath = path.join(commandsRoot, category);
-    if (!fs.statSync(categoryPath).isDirectory()) continue;
+  for (const entry of fs.readdirSync(commandsRoot)) {
+    const entryPath = path.join(commandsRoot, entry);
+    if (!fs.statSync(entryPath).isDirectory()) continue;
 
-    for (const commandFolder of fs.readdirSync(categoryPath)) {
-      const commandPath = path.join(categoryPath, commandFolder);
-      if (!fs.statSync(commandPath).isDirectory()) continue;
+    for (const subEntry of fs.readdirSync(entryPath)) {
+      const subEntryPath = path.join(entryPath, subEntry);
 
-      const file = fs.readdirSync(commandPath).find((f) => f.endsWith(".js"));
-      if (!file) continue;
-
-      try {
-        const command = require(path.join(commandPath, file));
-
-        // Prefix command
-        if (command?.name && typeof command.execute === "function") {
-          client.commands.set(command.name.toLowerCase(), command);
-          loadedPrefix++;
+      if (fs.statSync(subEntryPath).isDirectory()) {
+        const file = fs.readdirSync(subEntryPath).find((f) => f.endsWith(".js"));
+        if (file) {
+          loadCommandFile(path.join(subEntryPath, file));
         }
-
-        // Slash command
-        if (command?.data && typeof command.execute === "function") {
-          const slashName = command.data?.name;
-          if (slashName) {
-            client.slashCommands.set(slashName.toLowerCase(), command);
-            loadedSlash++;
-          }
-        }
-      } catch (err) {
-        console.error(`❌ Errore caricando comando ${category}/${commandFolder}/${file}`);
-        console.error(err);
+      } else if (subEntry.endsWith(".js")) {
+        loadCommandFile(subEntryPath);
       }
     }
   }
@@ -91,11 +94,7 @@ console.log(`✅ Caricati ${loadedPrefix} comandi normali`);
 console.log(`✅ Caricati ${loadedSlash} slash commands`);
 
 // ─────────────────────────────
-// LOAD EVENTS (events/)
-// ogni file deve esportare:
-// module.exports = { name, execute }
-// oppure:
-// module.exports = { name, once: true, execute }
+// LOAD EVENTS
 // ─────────────────────────────
 const eventsPath = path.join(__dirname, "events");
 
@@ -129,9 +128,7 @@ if (fs.existsSync(eventsPath)) {
 }
 
 // ─────────────────────────────
-// LOAD LOGS SYSTEM (logs/*.js)
-// ogni file deve esportare:
-// module.exports = (client) => {}
+// LOAD LOGS SYSTEM
 // ─────────────────────────────
 const logsPath = path.join(__dirname, "logs");
 
@@ -196,12 +193,6 @@ process.on("uncaughtException", (err) => {
   console.error("UNCAUGHT EXCEPTION:", err);
 });
 
-// ─────────────────────────────
-// DEBUG TOKEN
-// ─────────────────────────────
 console.log("TOKEN caricato?", process.env.TOKEN ? "SI" : "NO");
 
-// ─────────────────────────────
-// LOGIN
-// ─────────────────────────────
 client.login(process.env.TOKEN);
